@@ -5,7 +5,7 @@ import "core:math"
 import foster "olib:foster"
 import ui "olib:kit/ui"
 
-// 演示用 ASCII 位图图集；产品可换成资产管线提供的位图或 MSDF 字体。
+// 演示用 ASCII 字体；sdf 参数切换运行时距离场烘焙。
 FONT_ATLAS_SIZE :: 48
 
 // 把解析环形距离编码到 RGB 三通道，验证与 MSDF 共用的 median/屏幕导数路径。
@@ -44,11 +44,18 @@ bake_font :: proc() -> bool {
 		}
 		source := foster.FontLoadFile(path)
 		defer foster.FontDispose(&source)
-		baked, texture, ok := ui.ui_font_bake(&game.GraphicsDevice, &source, FONT_ATLAS_SIZE, label = "ui demo font")
+		baked: foster.MsdfFont
+		texture: foster.Texture
+		ok: bool
+		if sdf {
+			baked, texture, ok = ui.ui_font_bake_sdf(&game.GraphicsDevice, &source, FONT_ATLAS_SIZE, label = "ui demo sdf font")
+		} else {
+			baked, texture, ok = ui.ui_font_bake(&game.GraphicsDevice, &source, FONT_ATLAS_SIZE, label = "ui demo font")
+		}
 		if ok {
 			font = baked
 			font_texture = texture
-			ui.ui_register_font(&ctx, &font, texture)
+			ui.ui_register_font(&ctx, &font, texture, sdf ? .MSDF : .Bitmap)
 			return true
 		}
 	}

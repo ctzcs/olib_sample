@@ -39,6 +39,7 @@ run.bat ui_gallery
   Args: `hud` / `modal` / `scaled` / `scroll` switch the initial state, `font <path.ttf>` picks a font,
   `cli` opens the stdin debug console (`help`, `quit`).
 - `ui_gallery`: settings page, scrolling inventory and modal confirm; the basic widget acceptance page.
-  Args: `modal` / `scaled` / `scroll` / `msdf`, `font <path.ttf>`.
+  Args: `modal` / `scaled` / `scroll` / `msdf` / `sdf`, `font <path.ttf>`.
+  `sdf` bakes the UI font at runtime as a distance field; `msdf` adds the ring shader probe.
 - Add `shot` to either one to render a frame, write a PNG to this directory and exit
   (used for screenshot regression of `kit/ui`, see olib `kit/ui/README.md`).

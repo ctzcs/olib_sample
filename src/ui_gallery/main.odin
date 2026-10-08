@@ -26,6 +26,7 @@ selected: int = -1
 world_clicks: int
 frame: int
 shot, pending: bool
+sdf: bool
 capture: foster.Target
 ui_scale: f32 = 1
 
@@ -36,6 +37,7 @@ main :: proc() {
 		}
 	}
 	shot = app.has_arg(os.args, "shot")
+	sdf = app.has_arg(os.args, "sdf")
 	dialog = app.has_arg(os.args, "modal")
 	if app.has_arg(os.args, "scaled") {
 		ui_scale = 1.25
@@ -239,5 +241,8 @@ save_capture :: proc() {
 		pixel = {bytes[i * 4], bytes[i * 4 + 1], bytes[i * 4 + 2], bytes[i * 4 + 3]}
 	}
 	name := app.has_arg(os.args, "modal") ? "game_ui_modal.png" : app.has_arg(os.args, "scaled") ? "game_ui_scaled.png" : app.has_arg(os.args, "msdf") ? "game_ui_msdf.png" : app.has_arg(os.args, "scroll") ? "game_ui_scroll.png" : "game_ui.png"
+	if sdf {
+		name = fmt.tprintf("%s_sdf.png", name[:len(name) - 4])
+	}
 	fmt.println(name, foster.ImageWritePng(&image, name))
 }
