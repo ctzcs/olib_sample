@@ -1,4 +1,4 @@
-# OFoster Samples
+# olib_sample
 
 Runnable examples for [olib](https://github.com/ctzcs/olib): the Foster port (`olib:foster`)
 and the extension layer (`olib:kit/*`).
@@ -27,6 +27,10 @@ run.bat app_composition
 
 The default `basic` example keeps its update/render loop running until the
 window is closed.
+
+`app_composition` keeps game state in a heap-allocated `World` (separate from `App`),
+attaches it with `foster.AppSetUserData`, reads it back in callbacks with
+`foster.AppGetUserDataAs(app, World)`, runs 60 frames and exits.
 
 kit/ui:
 
