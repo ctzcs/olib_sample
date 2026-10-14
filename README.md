@@ -43,3 +43,23 @@ run.bat ui_gallery
   `sdf` bakes the UI font at runtime as a distance field; `msdf` adds the ring shader probe.
 - Add `shot` to either one to render a frame, write a PNG to this directory and exit
   (used for screenshot regression of `kit/ui`, see olib `kit/ui/README.md`).
+
+kit/rendering3d reference renderer:
+
+```bat
+run.bat forward3d
+run.bat forward3d shot
+```
+
+- `forward3d`: a Standard PBR forward renderer (directional, point and spot lights,
+  sorted alpha blending, debug grid) built on the mechanism-only `kit/rendering3d`
+  (mesh upload, generic render queue, shader bytecode selection, std140 packing,
+  DebugDraw3D). Lighting, materials and shaders live in this sample, not in olib:
+  copy `src/forward3d` into a game and change them to fit its look.
+- `shot` renders a fixed-time frame, writes `forward3d.png` to this directory and exits.
+  Set `SDL_GPU_DRIVER=vulkan` or `SDL_GPU_DRIVER=direct3d12` to pick the backend.
+- Shaders are precompiled to SPIR-V/DXIL/MSL. After editing `src/forward3d/shaders/*.hlsl`, run
+  `powershell -File ..\olib\kit\rendering3d\shaders\build_shaders.ps1 -Dir src\forward3d\shaders`
+  (needs SDL_shadercross on PATH).
+- `forward3d_test.odin` checks the cbuffer layouts against the shader and the mesh winding;
+  olib's `check.ps1` runs it.
