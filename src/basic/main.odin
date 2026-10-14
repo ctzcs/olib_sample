@@ -85,7 +85,7 @@ main :: proc() {
 	app.UpdateProc = update
 	app.RenderProc = render
 
-	fmt.println("foster_framework version:", foster.version_string())
-	fmt.println("sdl version:", foster.sdl_version_string())
+	fmt.println("foster_framework version:", foster.VersionString())
+	fmt.println("sdl version:", foster.SDLVersionString())
 	foster.Run(&app)
 }
