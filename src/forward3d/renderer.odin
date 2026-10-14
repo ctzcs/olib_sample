@@ -23,8 +23,8 @@ import foster "olib:foster"
 // 着色器
 // ==============================================================================
 
-// shaders/Compiled 由 olib 的 kit/rendering3d/shaders/build_shaders.ps1 编译后入库，#load 内嵌：
-//   powershell -File ..\olib\kit\rendering3d\shaders\build_shaders.ps1 -Dir src\forward3d\shaders
+// shaders/Compiled 由 olib 的 tools/shaders 编译后入库，#load 内嵌（在 olib_sample 根目录运行）：
+//   odin run ../olib/tools/shaders -- -dir:src/forward3d/shaders
 @(private) standard3d_vertex_spv :: #load("shaders/Compiled/Standard3D.vertex.spv")
 @(private) standard3d_fragment_spv :: #load("shaders/Compiled/Standard3D.fragment.spv")
 @(private) standard3d_skinned_vertex_spv :: #load("shaders/Compiled/Standard3DSkinned.vertex.spv")

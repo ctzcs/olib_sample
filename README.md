@@ -59,7 +59,6 @@ run.bat forward3d shot
 - `shot` renders a fixed-time frame, writes `forward3d.png` to this directory and exits.
   Set `SDL_GPU_DRIVER=vulkan` or `SDL_GPU_DRIVER=direct3d12` to pick the backend.
 - Shaders are precompiled to SPIR-V/DXIL/MSL. After editing `src/forward3d/shaders/*.hlsl`, run
-  `powershell -File ..\olib\kit\rendering3d\shaders\build_shaders.ps1 -Dir src\forward3d\shaders`
-  (needs SDL_shadercross on PATH).
+  `odin run ../olib/tools/shaders -- -dir:src/forward3d/shaders` (needs SDL_shadercross on PATH).
 - `forward3d_test.odin` checks the cbuffer layouts against the shader and the mesh winding;
-  olib's `check.ps1` runs it.
+  olib's `odin run tools/check` runs it.
