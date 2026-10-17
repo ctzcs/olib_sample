@@ -1,2 +1,5 @@
 build/
 /*.png
+
+# Generated shader includes and other derived assets
+/library/

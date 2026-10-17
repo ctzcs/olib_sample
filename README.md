@@ -113,3 +113,83 @@ run.bat forward3d shot
   `odin run ../olib/tools/shaders -- -dir:src/forward3d/shaders` (needs SDL_shadercross on PATH).
 - `forward3d_test.odin` checks the cbuffer layouts against the shader and the mesh winding;
   olib's `odin run tools/check` runs it.
+
+## Shader Lab: live 2D / 3D shader development
+
+```bat
+run.bat shader_lab
+run.bat shader_lab vulkan
+run.bat shader_lab d3d12
+run.bat shader_lab smoke vulkan
+run.bat shader_lab smoke d3d12 scaled
+run.bat shader_lab shot narrow
+run.bat shader_lab features embedded d3d12
+run.bat shader_lab multipass embedded d3d12
+```
+
+Requires `odin` and `shadercross` on PATH. Edit and save HLSL/HLSLI under
+`src/shader_lab/shaders/`, or parameter declarations under `src/shader_lab/shader_params/`.
+All parameter files belong to the same Odin package. Each `X_Params` struct uses
+`mat.Scalar / Vector2 / Vector3 / Color / Texture_Path` to select controls without ui tags.
+`X_Shader` uses `mat.Shader_Path`; optional `X_Preview` uses `mat.Preview_Mode.Two_D / Three_D`,
+and `x_defaults()` supplies defaults. Legacy basic types with ui tags remain supported.
+One temporary generator executable handles the entire package. Generated layouts and shader
+candidates are applied together only after successful compilation and GPU validation.
+
+The reusable tool lives in `olib:kit/tools/shader_lab`; this sample keeps only application
+startup/input wiring and project assets. Hosts supply a region, routed input, paths and an MSDF
+font to `init / update / render / cancel / dispose`. Add `embedded` to run inside an offset region.
+See [embedding and ownership](../olib/kit/tools/shader_lab/README.md). Optional screenshot and
+fault-injection helpers live in `tools/shader_lab_checks`, outside the runtime tool package.
+
+Sliders, vector controls, color swatches and texture selection are generated from the fields.
+The compact dark inspector uses Noto Sans CJK text, icons, thin borders and blue selection accents.
+All text uses a genuine offline MSDF atlas (48px/em, independent display sizes), embedded from
+[shared/msdf_font](shared/msdf_font/README.md). The atlas includes the sample Chinese labels.
+New characters require regenerating the atlas and rebuilding; missing label glyphs produce
+a diagnostic. Runtime SDF generation and the old `sdf` switch have been removed.
+Texture controls show the currently bound image as an aspect-preserving thumbnail; click the
+card to browse native files, choose from the texture directory, or clear back to the checker.
+Drop an image onto the card to bind it; changed image files reload automatically and failures
+retain the previous image. Odin `mat.Texture_Path` fields store image paths. Native dialog/drop wiring
+is in `shared/shader_lab_files`; the reusable tool only exchanges file requests and paths.
+Click a color swatch (such as Tint) to open the hue/SV palette, opacity bar and presets.
+Colors preview immediately; Apply keeps the color, while Cancel, Escape or focus loss restores it.
+Existing values survive field reordering by stable ID; new fields use defaults.
+Add images to `src/shader_lab/shaders/textures/` to select them in the texture control.
+Changing slider values or textures needs no shader compilation. Save/Load stores parameter
+snapshots for the selected shader group, including relative image paths. The tool writes the
+preset JSON for you. Reset all restores Odin defaults; R restores one field. These snapshots
+do not edit Odin defaults or host material documents; document undo/redo belongs to the host.
+Drag the inspector's right edge to resize it, or use Hide/Panel to collapse it. Narrow panels
+use an overlay inspector. Hosts can supply `Preview_Hooks` for custom meshes and draw input.
+
+Select the 2D or 3D workspace, then **二维拖尾** or **三维拖尾** for a multi-pass example: scene rendering,
+half-resolution horizontal/vertical blur, then previous-frame feedback. The declarations live
+in `src/shader_lab/shader_params/multipass.odin`, alongside the single-Pass effect declarations.
+Click a Pass to edit its parameters; use the preview toolbar to choose final or intermediate output.
+Only explicitly declared Effects appear in the list; reusable Shaders do not create extra entries.
+Pass references use `Params_Ref / Target_Ref / Field_Ref / Pass_Id` and named constants for completion.
+Pause freezes feedback; Step advances once; Reset history clears it. Only the selected Effect owns
+RenderTextures; switching releases them and recreates them on return, resetting feedback history.
+Floating-point targets and MSAA are supported; the UI stays outside
+the effect chain. See the [Odin pass API](../olib/kit/tools/shader_lab/README.md#odin-多-pass-与历史帧).
+
+Choose fullscreen/sprite for 2D, sphere/cube for 3D; the sidebar separates Effect, Pass and Shader parameters
+(up to 16 Effects and 16 parameter groups). Pause freezes time; right-drag orbits the camera and wheel zooms.
+Tab/Enter/arrows navigate controls. `source <directory> params <directory>` selects custom roots.
+Use the sample HLSL vertex/engine-input interfaces when adding shaders, and include
+the relative `../../../library/shader_dev/<Group>/params.generated.hlsli` path for fragment
+material parameters. Headers remain in `library/shader_dev/` for inspection and IDE completion;
+valid Odin changes refresh them. library is ignored by Git. `cache <directory>` overrides the
+generated-header root; update the source include accordingly. Only compiler workspaces are temporary.
+
+`smoke` edits isolated copies and checks HLSL and Odin failure recovery, generated layout
+migration, parameter preservation, textures, multi-shader discovery, UI input and resize.
+`shot` writes all four previews to `build/shader-lab-*.png`.
+`features` runs the focused preset/texture/custom-preview/layout checks using isolated sources.
+`multipass` checks graph generation, target formats/sizes, 2D/3D feedback, pause/step/reset/resize
+and atomic rollback/recovery using isolated sources, without running the other smoke suites.
+The reusable `olib:kit/shaderdev` package is independent of scene dimension;
+`olib:kit/material` has no editor dependency.
+See [declaration syntax, integration and limits](../olib/kit/shaderdev/README.md).
