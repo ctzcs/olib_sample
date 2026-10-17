@@ -41,11 +41,11 @@ run.bat book_ui
 ```
 
 - `game_ui`: ruins scene with HUD, skill cooldowns, grid inventory and pause menu.
-  Args: `hud` / `modal` / `scaled` / `scroll` switch the initial state, `font <path.ttf>` picks a font,
+  Args: `hud` / `modal` / `scaled` / `scroll` switch the initial state, `font <atlas-prefix>` loads an offline MSDF PNG/JSON pair,
   `cli` opens the stdin debug console (`help`, `quit`).
 - `ui_gallery`: settings page, scrolling inventory and modal confirm; the basic widget acceptance page.
-  Args: `modal` / `scaled` / `scroll` / `msdf` / `sdf`, `font <path.ttf>`.
-  `sdf` bakes the UI font at runtime as a distance field; `msdf` adds the ring shader probe.
+  Args: `modal` / `scaled` / `scroll` / `msdf` / `narrow`, `font <atlas-prefix>`.
+  All text uses offline MSDF; `msdf` opens a dedicated Latin/Chinese glyph comparison at 14/18/36/72px.
 - Add `shot` to `game_ui` or `ui_gallery` to render a frame, write a PNG to this directory and exit
   (used for screenshot regression of `kit/ui`, see olib `kit/ui/README.md`).
 

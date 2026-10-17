@@ -15,9 +15,6 @@ theme: ui.UI_Theme
 batcher: foster.Batcher
 font: foster.MsdfFont
 font_texture, icons: foster.Texture
-distance_font: foster.MsdfFont
-distance_texture: foster.Texture
-distance_font_id: int
 font_path: string
 volume: f32 = 0.65
 music: bool = true
@@ -26,7 +23,6 @@ selected: int = -1
 world_clicks: int
 frame: int
 shot, pending: bool
-sdf: bool
 capture: foster.Target
 ui_scale: f32 = 1
 
@@ -37,12 +33,11 @@ main :: proc() {
 		}
 	}
 	shot = app.has_arg(os.args, "shot")
-	sdf = app.has_arg(os.args, "sdf")
 	dialog = app.has_arg(os.args, "modal")
 	if app.has_arg(os.args, "scaled") {
 		ui_scale = 1.25
 	}
-	foster.InitApp(&game, foster.DefaultAppConfig("olib game UI", 1100, 760))
+	foster.InitApp(&game, foster.DefaultAppConfig("olib game UI", app.has_arg(os.args, "narrow") ? 760 : 1100, 760))
 	defer foster.Dispose(&game)
 	game.StartupProc = startup
 	game.UpdateProc = update
@@ -52,16 +47,13 @@ main :: proc() {
 }
 
 startup :: proc(g: ^foster.App) {
-	if !ui.ui_init(&ctx, 1100, 760) || !bake_font() {
-		fmt.eprintln("Font unavailable. Pass: font <path-to-ttf>")
+	if !ui.ui_init(&ctx, 1100, 760) || !load_font() {
+		fmt.eprintln("MSDF unavailable. Pass: font <atlas-prefix> (PNG + top-origin JSON)")
 		foster.Exit(g)
 		return
 	}
 	theme = ui.UI_THEME_DARK
 	foster.BatcherInit(&batcher, &g.GraphicsDevice, "game UI")
-	if app.has_arg(os.args, "msdf") {
-		distance_font_id = make_distance_probe(&g.GraphicsDevice)
-	}
 	image := foster.ImageMake(64, 32)
 	defer foster.ImageDispose(&image)
 	for y in 0..<32 {
@@ -75,7 +67,8 @@ startup :: proc(g: ^foster.App) {
 	}
 	icons = foster.TextureFromImage(&g.GraphicsDevice, &image, "two inventory icons")
 	if shot {
-		foster.TargetInit(&capture, &g.GraphicsDevice, 1100, 760)
+		output := foster.DrawableTargetFromWindow(&g.Window)
+		foster.TargetInit(&capture, &g.GraphicsDevice, output.WidthInPixels, output.HeightInPixels)
 	}
 }
 
@@ -85,8 +78,6 @@ shutdown :: proc(g: ^foster.App) {
 	foster.TextureDispose(&font_texture)
 	foster.TextureDispose(&icons)
 	foster.MsdfFontDispose(&font)
-	foster.TextureDispose(&distance_texture)
-	foster.MsdfFontDispose(&distance_font)
 	if shot {
 		foster.TargetDispose(&capture)
 	}
@@ -129,62 +120,64 @@ render :: proc(g: ^foster.App) {
 	ui.ui_set_modal(&ctx, dialog ? "confirm-dialog" : "")
 	ui.ui_begin(&ctx, g.Time.Delta)
 
-	root := ui.ui_column_decl(18)
+	root := ui.ui_column_decl(app.has_arg(os.args, "msdf") ? 12 : 18)
 	root.layout.padding = clay.PaddingAll(28)
 	root.layout.sizing.height = clay.SizingGrow({})
 	if clay.UI()(root) {
 		ui.ui_heading(&ctx, &theme, "GAME UI / FIELD KIT")
 		ui.ui_label_dim(&ctx, &theme, "Tab to focus  /  Enter to confirm  /  Arrow keys to adjust  /  Wheel to scroll")
-		if clay.UI()(ui.ui_row_decl(24)) {
-			panel := ui.ui_panel_decl(&theme, 18, 300)
-			panel.id = clay.ID("settings-panel")
-			ui.ui_block_pointer(&ctx, "settings-panel")
-			if clay.UI()(panel) {
-				ui.ui_heading(&ctx, &theme, "Settings")
-				ui.ui_label(&ctx, &theme, "Music")
-				ui.ui_toggle(&ctx, &theme, "music", &music)
-				ui.ui_label(&ctx, &theme, fmt.aprintf("Volume  %d%%", int(volume * 100), allocator = context.temp_allocator))
-				ui.ui_slider(&ctx, &theme, "volume", &volume, width = 250)
-				ui.ui_separator(&ctx, &theme)
-				ui.ui_label(&ctx, &theme, "Health")
-				ui.ui_progress_bar(&ctx, &theme, 0.72, 250)
-				ui.ui_button(&ctx, &theme, "locked", "Locked action", {disabled = true})
-				if ui.ui_button_ex(&ctx, &theme, "reset", "Reset settings", .Primary) {
-					dialog = true
-				}
+		if app.has_arg(os.args, "msdf") {
+			ui.ui_label_dim(&ctx, &theme, "Offline RGB MSDF / 48px atlas / range 8")
+			for size in ([]u16{14, 18, 36, 72}) {
+				ui.ui_label_dim(&ctx, &theme, fmt.tprintf("%d logical px / %.1f output px", size, f32(size) * ui_scale))
+				ui.ui_label_ex(&ctx, &theme, "AV中文", theme.text, size)
 			}
-			inventory := ui.ui_panel_decl(&theme, 12, 440)
-			inventory.id = clay.ID("inventory-panel")
-			ui.ui_block_pointer(&ctx, "inventory-panel")
-			if clay.UI()(inventory) {
-				ui.ui_heading(&ctx, &theme, "Inventory")
-				ui.ui_label_dim(&ctx, &theme, "24 items / clipped viewport / atlas icons")
-				if clay.UI()(ui.ui_scroll_decl(&ctx, "inventory-scroll", 276, gap = 6)) {
-					for i in 0..<24 {
-						if clay.UI()(ui.ui_row_decl(12)) {
-							id := fmt.aprintf("item-%d", i, allocator = context.temp_allocator)
-							sub := foster.SubtextureFromSource(&icons, {f32(i % 2) * 32, 0, 32, 32})
-							if ui.ui_image_button(&ctx, &theme, id, sub, 26) {
-								selected = i
-							}
-							ui.ui_label(&ctx, &theme, fmt.aprintf("Supply crate %02d", i + 1, allocator = context.temp_allocator))
-						}
+			if clay.UI()(ui.ui_row_decl(16)) {
+				ui.ui_button(&ctx, &theme, "font-back", "返回")
+				ui.ui_button_ex(&ctx, &theme, "font-confirm", "确认", .Primary)
+			}
+		} else {
+			if clay.UI()(ui.ui_row_decl(24)) {
+				panel := ui.ui_panel_decl(&theme, 18, 300)
+				panel.id = clay.ID("settings-panel")
+				ui.ui_block_pointer(&ctx, "settings-panel")
+				if clay.UI()(panel) {
+					ui.ui_heading(&ctx, &theme, "Settings")
+					ui.ui_label(&ctx, &theme, "Music")
+					ui.ui_toggle(&ctx, &theme, "music", &music)
+					ui.ui_label(&ctx, &theme, fmt.aprintf("Volume  %d%%", int(volume * 100), allocator = context.temp_allocator))
+					ui.ui_slider(&ctx, &theme, "volume", &volume, width = 250)
+					ui.ui_separator(&ctx, &theme)
+					ui.ui_label(&ctx, &theme, "Health")
+					ui.ui_progress_bar(&ctx, &theme, 0.72, 250)
+					ui.ui_button(&ctx, &theme, "locked", "Locked action", {disabled = true})
+					if ui.ui_button_ex(&ctx, &theme, "reset", "Reset settings", .Primary) {
+						dialog = true
 					}
 				}
-				ui.ui_separator(&ctx, &theme)
-				ui.ui_label(&ctx, &theme, selected < 0 ? "Select an item" : fmt.aprintf("Selected: crate %02d", selected + 1, allocator = context.temp_allocator))
+				inventory := ui.ui_panel_decl(&theme, 12, 440)
+				inventory.id = clay.ID("inventory-panel")
+				ui.ui_block_pointer(&ctx, "inventory-panel")
+				if clay.UI()(inventory) {
+					ui.ui_heading(&ctx, &theme, "Inventory")
+					ui.ui_label_dim(&ctx, &theme, "24 items / clipped viewport / atlas icons")
+					if clay.UI()(ui.ui_scroll_decl(&ctx, "inventory-scroll", 276, gap = 6)) {
+						for i in 0..<24 {
+							if clay.UI()(ui.ui_row_decl(12)) {
+								id := fmt.aprintf("item-%d", i, allocator = context.temp_allocator)
+								sub := foster.SubtextureFromSource(&icons, {f32(i % 2) * 32, 0, 32, 32})
+								if ui.ui_image_button(&ctx, &theme, id, sub, 26) {
+									selected = i
+								}
+								ui.ui_label(&ctx, &theme, fmt.aprintf("Supply crate %02d", i + 1, allocator = context.temp_allocator))
+							}
+						}
+					}
+					ui.ui_separator(&ctx, &theme)
+					ui.ui_label(&ctx, &theme, selected < 0 ? "Select an item" : fmt.aprintf("Selected: crate %02d", selected + 1, allocator = context.temp_allocator))
+				}
 			}
-		}
-		ui.ui_label_dim(&ctx, &theme, fmt.aprintf("World clicks outside panels: %d", world_clicks, allocator = context.temp_allocator))
-		if app.has_arg(os.args, "msdf") {
-			ui.ui_label_dim(&ctx, &theme, "Distance field shader: same ring at 18 / 36 / 72px")
-			if clay.UI()(ui.ui_row_decl(24)) {
-				distance_theme := theme
-				distance_theme.body_font_id = u16(distance_font_id)
-				ui.ui_label_ex(&ctx, &distance_theme, "O", theme.text, 18)
-				ui.ui_label_ex(&ctx, &distance_theme, "O", theme.text, 36)
-				ui.ui_label_ex(&ctx, &distance_theme, "O", theme.text, 72)
-			}
+			ui.ui_label_dim(&ctx, &theme, fmt.aprintf("World clicks outside panels: %d", world_clicks, allocator = context.temp_allocator))
 		}
 	}
 	// 使用本帧开头的 modal_id，保证弹窗显示与交互隔离在同一帧切换。
@@ -216,6 +209,11 @@ render :: proc(g: ^foster.App) {
 	foster.GraphicsDeviceClear(&g.GraphicsDevice, target, theme.window_bg)
 	foster.BatcherRender(&batcher, target)
 	frame += 1
+	if shot && (capture.Width != target.WidthInPixels || capture.Height != target.HeightInPixels) {
+		foster.TargetDispose(&capture)
+		foster.TargetInit(&capture, &g.GraphicsDevice, target.WidthInPixels, target.HeightInPixels)
+		pending = false
+	}
 	if shot && pending {
 		save_capture()
 		fmt.printf("UI diagnostics: errors=%d, pool_overflow=%v\n", ctx.error_count, ctx.pool_overflow)
@@ -231,18 +229,20 @@ render :: proc(g: ^foster.App) {
 save_capture :: proc() {
 	bytes := foster.TextureDownloadData(foster.TargetAttachment(&capture, 0))
 	defer delete(bytes)
-	image := foster.ImageMake(1100, 760)
+	image := foster.ImageMake(capture.Width, capture.Height)
 	defer foster.ImageDispose(&image)
-	if len(bytes) < 1100 * 760 * 4 {
+	if len(bytes) < capture.Width * capture.Height * 4 {
 		fmt.eprintln("Capture readback failed")
 		return
 	}
 	for &pixel, i in image.Pixels {
 		pixel = {bytes[i * 4], bytes[i * 4 + 1], bytes[i * 4 + 2], bytes[i * 4 + 3]}
 	}
-	name := app.has_arg(os.args, "modal") ? "game_ui_modal.png" : app.has_arg(os.args, "scaled") ? "game_ui_scaled.png" : app.has_arg(os.args, "msdf") ? "game_ui_msdf.png" : app.has_arg(os.args, "scroll") ? "game_ui_scroll.png" : "game_ui.png"
-	if sdf {
-		name = fmt.tprintf("%s_sdf.png", name[:len(name) - 4])
-	}
+	name := fmt.tprintf("ui-gallery%s%s%s%s.png",
+		app.has_arg(os.args, "msdf") ? "-msdf" : "",
+		app.has_arg(os.args, "scaled") ? "-scaled" : "",
+		app.has_arg(os.args, "narrow") ? "-narrow" : "",
+		app.has_arg(os.args, "modal") ? "-modal" : "")
+	fmt.printf("Final output: %dx%d, UI scale %.2f\n", capture.Width, capture.Height, ui_scale)
 	fmt.println(name, foster.ImageWritePng(&image, name))
 }

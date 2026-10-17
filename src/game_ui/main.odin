@@ -65,8 +65,8 @@ startup :: proc(g: ^foster.App) {
 	if app.has_arg(os.args, "cli") {
 		_ = app.cli_open(&console, g)
 	}
-	if !ui.ui_init(&ctx, VIEW_W, VIEW_H) || !bake_font() {
-		fmt.eprintln("Font unavailable. Pass: font <path-to-ttf>")
+	if !ui.ui_init(&ctx, VIEW_W, VIEW_H) || !load_font() {
+		fmt.eprintln("MSDF unavailable. Pass: font <atlas-prefix> (PNG + top-origin JSON)")
 		foster.Exit(g)
 		return
 	}
