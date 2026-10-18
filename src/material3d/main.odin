@@ -21,6 +21,7 @@ State :: struct {
 	camera: world.Camera3D,
 	time: f32,
 	outline: bool,
+	grouped: bool,
 	path: string,
 	failed: bool,
 }
@@ -29,6 +30,7 @@ main :: proc() {
 	s := new(State)
 	defer free(s)
 	s.outline = true
+	s.grouped = true
 	// 从 Shader Lab “保存材质”得到的文件；R 重新载入到左侧模型，右侧保持独立。
 	s.path = len(os.args) > 1 ? os.args[1] : #directory + "/material.json"
 	absolute, path_error := filepath.abs(s.path)
@@ -37,7 +39,7 @@ main :: proc() {
 	s.resources.Root = filepath.dir(absolute)
 	s.path = filepath.base(absolute)
 	app: foster.App
-	foster.InitApp(&app, foster.DefaultAppConfig("Material3D | Space: outline | R: reload left material | Esc: exit", 1100, 720))
+	foster.InitApp(&app, foster.DefaultAppConfig("Material3D | G: grouped/object passes | Space: outline | R: reload left | Esc: exit", 1100, 720))
 	foster.AppSetUserData(&app, s)
 	app.StartupProc, app.UpdateProc, app.RenderProc, app.ShutdownProc = startup, update, render, shutdown
 	foster.Run(&app)
@@ -88,6 +90,7 @@ update :: proc(app: ^foster.App) {
 	keys := &app.Input.State.Keyboard
 	if foster.KeyboardPressed(keys, .Escape) do foster.Exit(app)
 	if foster.KeyboardPressed(keys, .Space) do s.outline = !s.outline
+	if foster.KeyboardPressed(keys, .G) do s.grouped = !s.grouped
 	if foster.KeyboardPressed(keys, .R) {
 		if reason := rendering.material_reload(&s.materials, s.models[0].material); reason != "" {
 			fmt.eprintln(reason)
@@ -110,11 +113,21 @@ render :: proc(app: ^foster.App) {
 	foster.GraphicsDeviceClear(device, target, colors[:], 1, 0, foster.ClearMask.Color | foster.ClearMask.Depth)
 	world.camera3d_set_viewport(&s.camera, w, h)
 	view := r3d.Model_View{target = target, view_projection = world.camera3d_view_projection(&s.camera),
-		time = s.time, pass_limit = s.outline ? 0 : 1}
+		time = s.time}
 	for model, i in s.models {
 		transform := world.matrix4_translation(i == 0 ? -1.25 : 1.25, 0, 0)
-		if !r3d.model_draw(model, transform, view) {
+		ok := s.grouped || !s.outline ? r3d.model_draw_pass(model, "body", transform, view) :
+			r3d.model_draw(model, transform, view)
+		if !ok {
 			fail(app, "Cannot bind model material")
+		}
+	}
+	if s.grouped && s.outline {
+		for model, i in s.models {
+			transform := world.matrix4_translation(i == 0 ? -1.25 : 1.25, 0, 0)
+			if !r3d.model_draw_pass(model, "outline", transform, view) {
+				fail(app, "Cannot draw model outline")
+			}
 		}
 	}
 	foster.BatcherClear(&s.batch)

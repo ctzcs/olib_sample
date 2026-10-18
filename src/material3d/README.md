@@ -2,6 +2,7 @@
 
 在 olib_sample 根目录运行 `run.bat material3d`。左球读取这里的 `material.json`，右球是独立实例；
 两者共用 Effect 和 GPU Shader。空格切换描边，R 重新读取左球的材质，Esc 退出。
+默认先画所有本体再画所有描边，G 切换为逐模型画全部 Pass；不需要描边时只选 `body`。
 示例使用静态网格和原生像素 4x MSAA，不包含编辑器或热重载依赖。
 
 业务接入现在只需加载、赋给模型和绘制：
@@ -9,11 +10,14 @@
 ```odin
 model.material, reason = rendering.material_load(&materials, "material.json")
 ok := r3d.model_draw(model, transform, view)
+// 或只画一个 Pass，顺序由调用者组织：
+ok = r3d.model_draw_pass(model, "outline", transform, view)
 ```
 
 `shaders.odin` 在资源初始化时登记一次效果和预编译代码；库负责创建 Shader、加载贴图、
 组装 Pass 绑定及统一释放。两个模型分别 load 同一文件，参数独立、Shader 和贴图共享。
 数值可用 `material_set_number` 修改；R 使用 `material_reload`，成功后模型槽指针不变。
+3D 接口仍逐模型提交，不自动合并网格或做实例化；按 Pass 分组可减少程序/状态来回切换。
 资源文件通过 `foster.StorageContainer` 读取，本例把所选材质文件所在目录作为根。
 同路径贴图保持缓存；R 不重编 Shader、不刷新贴图内容。
 
