@@ -1,0 +1,29 @@
+#include <metal_stdlib>
+#include <simd/simd.h>
+
+using namespace metal;
+
+struct type_MatrixBlock
+{
+    float4x4 Wvp;
+    float4x4 World;
+};
+
+struct vertex_main_out
+{
+    float4 gl_Position [[position]];
+};
+
+struct vertex_main_in
+{
+    float3 in_var_TEXCOORD0 [[attribute(0)]];
+    float3 in_var_TEXCOORD1 [[attribute(1)]];
+};
+
+vertex vertex_main_out vertex_main(vertex_main_in in [[stage_in]], constant type_MatrixBlock& MatrixBlock [[buffer(0)]])
+{
+    vertex_main_out out = {};
+    out.gl_Position = float4(in.in_var_TEXCOORD0 + (in.in_var_TEXCOORD1 * 0.054999999701976776123046875), 1.0) * MatrixBlock.Wvp;
+    return out;
+}
+

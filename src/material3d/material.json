@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "effect": "Outlined",
+  "groups": [
+    {"version": 1, "group": "Preview3D", "fields": [
+      {"id": "hue", "kind": "Scalar", "number": [0.15, 0, 0, 0]}
+    ]},
+    {"version": 1, "group": "Outline", "fields": [
+      {"id": "color", "kind": "Color", "number": [0.03, 0.04, 0.07, 1]}
+    ]}
+  ]
+}

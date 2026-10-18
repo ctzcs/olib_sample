@@ -11,6 +11,11 @@ and the extension layer (`olib:kit/*`).
 
 ## Run an example
 
+Model materials: `run.bat material3d` shows two independent instances of the Shader Lab
+body + outline effect. Space toggles the outline; R reloads the left model's material JSON.
+See [Shader Lab → model material workflow](src/material3d/README.md) for exporting parameters,
+loading textures and rebuilding release shaders without depending on the editor.
+
 From this directory: `run.bat [sample] [args...]` (extra args are passed to the program).
 
 Foster basics:
@@ -32,7 +37,49 @@ window is closed.
 attaches it with `foster.AppSetUserData`, reads it back in callbacks with
 `foster.AppGetUserDataAs(app, World)`, runs 60 frames and exits.
 
+kit/gizmo:
+
+```bat
+run.bat gizmo2d
+run.bat gizmo2d shot
+run.bat gizmo2d shot scaled
+run.bat gizmo2d shot narrow vulkan
+```
+
+`gizmo2d` shows three independent Camera2D viewports for translation, rotation and local scaling.
+Drag the center square to move freely or scale uniformly. Arrow keys pan the cameras,
+Q/E rotate, Z/X zoom, R resets all objects in one undoable edit. Ctrl+Z/Y undo/redo;
+Escape cancels an active operation, otherwise exits. It uses a system font on Windows/macOS/Linux.
+`shot` exercises real pointer input, checks resulting transforms, resizes the window and saves
+native-resolution captures to `build/gizmo2d-<width>x<height>.png`.
+The App owns a session in `src/gizmo2d/editor`, with one document and transaction shared by the three viewports.
+Each gesture creates one history entry; focus loss, camera/viewport changes and Escape restore its starting values.
+Capture remains with the originating tool until release. Reset and undo/redo use the same document update path.
+The fixed objects cannot be added, removed or reordered. This is an in-memory example: it offers no file save/load,
+play simulation or release-game entry, and closing the window discards its contents.
+See [editor guidelines](../olib/prompts/editor-guidelines.md) for the shared project integration contract.
+`odin test src/gizmo2d -collection:olib=../olib -vet` verifies transactions, atomic rejection, capture and release-frame updates;
+these tests are also discovered by olib's `tools/check`.
+
 kit/ui:
+
+```bat
+run.bat ui_motion
+run.bat ui_motion shot
+run.bat ui_motion shot scaled narrow
+```
+
+`ui_motion` is a tile-based motion study inspired by the requested Shogun Showdown feel,
+with original procedural icons: press/release ATTACK for a quick rebound, click RELIC for
+anticipation, a tilted jump and landing squash, or click REWARD for a modal entrance/exit.
+Tab/Enter select and activate; Esc closes the modal. The background stays blocked until
+its exit finishes. Animation timings and poses live in `src/ui_motion/motion.odin`.
+The UI subtree transform uses `kit/ui` and existing `core/tween` sequences; restarting an
+animation cancels its old handle and continues from the current pose.
+`shot`/`smoke` performs clicks, checks state changes, checks quick hover/leave recovery, resizes to 960×800, and saves seven
+native-resolution PNGs under `build/ui-motion-*.png`. `scaled narrow` starts at 760×760
+with 125% UI scale; fonts and icons render directly at the final output resolution.
+The UI font atlas includes all Chinese labels. No game assets are copied.
 
 ```bat
 run.bat game_ui
@@ -113,6 +160,23 @@ run.bat forward3d shot
   `odin run ../olib/tools/shaders -- -dir:src/forward3d/shaders` (needs SDL_shadercross on PATH).
 - `forward3d_test.odin` checks the cbuffer layouts against the shader and the mesh winding;
   olib's `odin run tools/check` runs it.
+
+## Hot reload: live game logic and UI
+
+```bat
+run.bat hotreload
+```
+
+`hotreload` is a playable collector game with a persistent window and replaceable game DLL.
+Move with WASD/arrows, collect a node, then pause and save changes to
+`src/hotreload/view/ui.odin` (title, colors, layout) or `src/hotreload/logic/rules.odin`
+(movement speed and pickup reward). Successful builds update the running game while keeping
+position, score, collected nodes, elapsed time, pause state and the dynamic movement trail.
+Failed builds retain the previous game and display diagnostics; fix and save to recover.
+F5 retries, Space pauses, and Escape exits. `New run` explicitly resets progress.
+
+`scaled` uses 125% UI scaling; `narrow` starts at 960x720.
+See [the walkthrough and ownership contract](src/hotreload/README.md).
 
 ## Shader Lab: live 2D / 3D shader development
 

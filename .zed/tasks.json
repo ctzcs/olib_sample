@@ -23,4 +23,20 @@
     "allow_concurrent_runs": false,
     "reveal": "always"
   },
+  {
+    "label": "hotreload",
+    "command": "cmd.exe",
+    "args": ["/d", "/c", ".\\run.bat", "hotreload"],
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "allow_concurrent_runs": false,
+    "reveal": "always"
+  },
+  {
+    "label": "ui_motion",
+    "command": "cmd.exe",
+    "args": ["/d", "/c", ".\\run.bat", "ui_motion"],
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "allow_concurrent_runs": false,
+    "reveal": "always"
+  },
 ]
