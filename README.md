@@ -231,8 +231,8 @@ RenderTextures; switching releases them and recreates them on return, resetting 
 Floating-point targets and MSAA are supported; the UI stays outside
 the effect chain. See the [Pass syntax](../olib/kit/rendering/shader/lang/README.md#pass-与目标).
 
-Choose fullscreen/sprite for 2D, sphere/cube for 3D; the sidebar separates Effect, Pass and Shader parameters
-(up to 16 Effects and 16 parameter groups). Pause freezes time; right-drag orbits the camera and wheel zooms.
+Choose fullscreen/sprite for 2D, sphere/cube for 3D; the sidebar separates Effect, Pass and Shader parameters.
+Pause freezes time; right-drag orbits the camera and wheel zooms.
 Tab/Enter/arrows navigate controls. `source <directory>` selects a custom source root.
 Use the sample vertex/engine-input interfaces when adding shaders. Properties automatically
 supply fragment parameter declarations; there are no generated-header includes to maintain.
