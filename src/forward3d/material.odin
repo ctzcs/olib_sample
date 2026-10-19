@@ -1,6 +1,6 @@
 package main
 
-// Standard 材质数据与渲染状态推导（参考实现，原 kit/rendering3d material3d）。
+// Standard 材质数据与渲染状态推导（参考实现，原 kit/rendering/3d material3d）。
 // 这是某一种画风（glTF 风格的金属度/粗糙度 PBR）的材质模型；游戏换画风时
 // 连同 shaders/ 一起改写。
 

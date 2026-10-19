@@ -15,20 +15,20 @@ validate_hierarchy :: proc(s: ^State, app: ^foster.App) {
 		check(s, false, s.parameter_watch.diagnostic)
 		return
 	}
-	if s.shader_count != 4 || s.pending_bank != nil do return
+	if s.shader_count < 10 || s.pending_bank != nil do return
 	graph_index, graph_3d_index := -1, -1
 	for effect, i in s.effects {
 		if effect.desc.name == "Trail2D" do graph_index = i
 		if effect.desc.name == "Trail3D" do graph_3d_index = i
 	}
 	e := &s.effects[graph_index]
-	p := &s.parameters[2] // 按名称排序：Preview2D / Preview3D / TrailBlur / TrailFeedback。
+	p := &s.parameters[lab.bank_index(s.bank, "Trail2D_blur_x")]
 	target := &e.targets[2].buffers[0]
 	switch s.smoke_step {
 	case 0:
 		check(s, s.selected_effect == 0 && s.preview_pass == -1, "start with effect and final output")
 		check(s, e.desc.name == "Trail2D" && e.desc.label == "二维拖尾" &&
-			p.live.label == "模糊" && p.live.folder == "后处理", "Odin labels/folder independent of IDs")
+			p.live.label == "横向模糊", "Pass labels independent of IDs")
 		for effect in s.effects {
 			for pass in effect.desc.passes {
 				for cp in pass.label {
@@ -67,7 +67,7 @@ validate_hierarchy :: proc(s: ^State, app: ^foster.App) {
 		p.values[2].number[0] = 4.5
 		s.graph_bank = s.bank
 		renamed, _ := strings.replace_all(s.graph_source, "二维拖尾", "拖尾二维", context.temp_allocator)
-		check(s, os.write_entire_file(fmt.tprintf("%s/multipass.odin", s.parameter_directory), transmute([]u8)renamed) == nil,
+		check(s, os.write_entire_file(fmt.tprintf("%s/Trail2D.oshader", s.source_root), transmute([]u8)renamed) == nil,
 			"rename effect label fixture")
 	case 10:
 		if rawptr(s.bank) == s.graph_bank do return
@@ -98,7 +98,7 @@ validate_hierarchy :: proc(s: ^State, app: ^foster.App) {
 		check(s, widget_present(s, "effect:Trail3D") &&
 			!widget_present(s, "effect:Trail2D"), "effect menu isolates 3D workspace")
 		check(s, !widget_present(s, "single-shaders") && len(s.effects) == 4,
-			"only four explicit effects are listed for four compiled Shaders")
+			"only four explicit effects are listed for ten compiled Pass programs")
 		for effect in s.effects {
 			check(s, effect.desc.name != "TrailBlur" && effect.desc.name != "TrailFeedback",
 				"shared Shader resources do not create effects")
@@ -201,23 +201,25 @@ validate_hierarchy :: proc(s: ^State, app: ^foster.App) {
 		s.graph_bank = s.bank
 	case 43:
 		// 显式单 Pass 扩成两个 Pass，保留 main ID。
-		path := fmt.tprintf("%s/preview3d.odin", s.parameter_directory)
+		path := fmt.tprintf("%s/Preview3D.oshader", s.source_root)
 		bytes, err := os.read_entire_file(path, context.temp_allocator)
 		check(s, err == nil, "read single Pass declaration")
-		expanded, _ := strings.replace_all(string(bytes), `output = "color"`, `output = "base"`, context.temp_allocator)
-		expanded, _ = strings.replace_all(expanded, "Preview3D_Passes := []mat.Pass_Desc{",
-			"Preview3D_Passes := []mat.Pass_Desc{\n" +
-			`{id = "second", params = "Preview3D", draw = .Preview_Model, output = "color"},`, context.temp_allocator)
+		text := string(bytes)
+		start := strings.index(text, "    Pass \"main\"")
+		check(s, start >= 0, "find main Pass")
+		second, _ := strings.replace_all(strings.trim_space(text[start:len(text)-2]), "Pass \"main\"", "Pass \"second\"", context.temp_allocator)
+		first, _ := strings.replace_all(text[:len(text)-2], "Draw Preview_Model", "Draw Preview_Model\n        Output \"base\"", context.temp_allocator)
+		expanded := fmt.tprintf("%s\n%s\n}\n", first, second)
 		check(s, os.write_entire_file(path, expanded) == nil, "extend explicit effect with another Pass")
 	case 44:
 		if rawptr(s.bank) == s.graph_bank do return
 		chosen := &s.effects[s.selected_effect]
 		check(s, chosen.desc.name == "Preview3D" && len(chosen.desc.passes) == 2 &&
 			chosen.desc.passes[s.inspect_pass].id == "main" && s.workspace == 1 &&
-			len(s.effects) == 4 && s.shader_count == 4 && lab.parameter_number(s.tool, 1, "hue") == 0.15,
+			len(s.effects) == 4 && s.shader_count == 11 && lab.parameter_number(s.tool, 1, "hue") == 0.15,
 			"single to multi-Pass edit retains effect identity, selection and values")
 		check(s, widget_present(s, "pass-preview"), "multiple Passes expose intermediate preview")
-		if !s.failed do fmt.println("PASS: explicit effects only, shared Shaders excluded, single/multi-Pass rendering, workspace/scroll restoration and scaled MSDF input")
+		if !s.failed do fmt.println("PASS: explicit effects only, Pass programs excluded, single/multi-Pass rendering, workspace/scroll restoration and scaled MSDF input")
 		foster.Exit(app)
 	}
 	s.smoke_step += 1

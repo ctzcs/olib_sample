@@ -23,13 +23,10 @@ check_selected_targets :: proc(s: ^State, bank: ^lab.Parameter_Bank, selected: i
 }
 
 targets_declarations :: proc(s: ^State, enabled: bool) {
-	for name in ([]string{"preview2d.odin", "preview3d.odin", "multipass.odin"}) {
-		path := fmt.tprintf("%s/%s", s.parameter_directory, name)
-		bytes, err := os.read_entire_file(path, context.temp_allocator)
-		check(s, err == nil, "read isolated target fixture")
-		text, _ := strings.replace_all(string(bytes), enabled ? "_Stages" : "_Passes",
-			enabled ? "_Passes" : "_Stages", context.temp_allocator)
-		check(s, os.write_entire_file(path, text) == nil, "toggle explicit effect declarations")
+	for name in ([]string{"Preview2D", "Preview3D", "Trail2D", "Trail3D"}) {
+		active := fmt.tprintf("%s/%s.oshader", s.source_root, name)
+		hidden := fmt.tprintf("%s/%s.disabled", s.source_root, name)
+		check(s, os.rename(enabled ? hidden : active, enabled ? active : hidden) == nil, "toggle shader discovery")
 	}
 	s.graph_bank = s.bank
 }
@@ -43,7 +40,7 @@ validate_targets :: proc(s: ^State, app: ^foster.App) {
 		check(s, false, fmt.tprintf("%s %s", s.parameter_watch.diagnostic, s.bank_error))
 		return
 	}
-	if s.shader_count != 4 || s.pending_bank != nil do return
+	if s.pending_bank != nil || (s.shader_count != 10 && s.smoke_step != 7) do return
 	switch s.smoke_step {
 	case 0:
 		check(s, s.selected_effect >= 0 && len(s.effects[s.selected_effect].targets) == 1 &&
@@ -69,7 +66,7 @@ validate_targets :: proc(s: ^State, app: ^foster.App) {
 	case 3:
 		check(s, s.effects[s.selected_effect].frame == 1, "feedback advances before switching away")
 		s.effects[s.selected_effect].expanded[2] = false
-		s.parameters[2].values[2].number[0] = 7
+		s.parameters[lab.bank_index(s.bank, "Trail3D_blur_x")].values[2].number[0] = 7
 		lab.select_workspace(s.tool, 0)
 	case 4:
 		check(s, s.selected_effect >= 0 && s.effects[s.selected_effect].ready, "2D workspace allocates only its selected effect")
@@ -85,15 +82,15 @@ validate_targets :: proc(s: ^State, app: ^foster.App) {
 		if int(s.render_serial) < s.target_release_serial+2 do return
 		check(s, s.effects[s.selected_effect].desc.name == "Trail3D" && s.effects[s.selected_effect].ready &&
 			s.effects[s.selected_effect].frame == 0 && !s.effects[s.selected_effect].expanded[2] &&
-			s.parameters[2].values[2].number[0] == 7, "switch back recreates history while retaining parameters and folding")
+			s.parameters[lab.bank_index(s.bank, "Trail3D_blur_x")].values[2].number[0] == 7, "switch back recreates history while retaining parameters and folding")
 		if s.failed {
 			fmt.printf("effect=%s ready=%v frame=%d expanded=%v radius=%v\n",
 				s.effects[s.selected_effect].desc.name, s.effects[s.selected_effect].ready,
-				s.effects[s.selected_effect].frame, s.effects[s.selected_effect].expanded[2], s.parameters[2].values[2].number[0])
+				s.effects[s.selected_effect].frame, s.effects[s.selected_effect].expanded[2], s.parameters[lab.bank_index(s.bank, "Trail3D_blur_x")].values[2].number[0])
 		}
 		s.graph_bank = s.bank
 		renamed, _ := strings.replace_all(s.graph_source, "二维拖尾", "拖尾二维", context.temp_allocator)
-		check(s, os.write_entire_file(fmt.tprintf("%s/multipass.odin", s.parameter_directory), renamed) == nil,
+		check(s, os.write_entire_file(fmt.tprintf("%s/Trail2D.oshader", s.source_root), renamed) == nil,
 			"reload effect declarations with an active selection")
 	case 6:
 		if rawptr(s.bank) == s.graph_bank do return
@@ -104,11 +101,7 @@ validate_targets :: proc(s: ^State, app: ^foster.App) {
 		if rawptr(s.bank) == s.graph_bank do return
 		check(s, len(s.effects) == 0 && s.workspace_empty && s.selected_effect == -1,
 			"removing effects leaves an empty workspace")
-		for shader, i in s.shaders[:s.shader_count] {
-			check(s, !s.bank.shader_used[i] && shader.status == .Ready &&
-				shader.vertex.Resource == nil && shader.fragment.Resource == nil,
-				"unused Shader remains compiled without GPU pipeline or fallback target")
-		}
+		check(s, s.shader_count == 0, "removed files release shader resources")
 		pixels := foster.TextureDownloadData(foster.TargetAttachment(&s.output))
 		defer delete(pixels)
 		pixel := (int(s.viewport.Y+s.viewport.Height/2)*s.output.Width+int(s.viewport.X+s.viewport.Width/2))*4
@@ -135,7 +128,7 @@ validate_targets :: proc(s: ^State, app: ^foster.App) {
 		check(s, data.found, "parameter scroll exists for texture controls")
 		if data.found do data.scrollPosition.y = -10000
 	case 10:
-		press_widget(s, app, "texture:Preview2D:image", 0.5)
+		press_widget(s, app, "texture:Preview2D_main:image", 0.5)
 	case 11, 14:
 		foster.InputMouseButton(&app.Input, .Left, false, app.Time.Elapsed)
 	case 13:

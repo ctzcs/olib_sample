@@ -16,49 +16,17 @@ prepare_smoke :: proc(s: ^State) -> bool {
 		return false
 	}
 	s.temp_root = root
-	for name in ([]string{"Preview2D.hlsl", "Preview3D.hlsl", "Palette.hlsli"}) {
-		bytes, read_err := os.read_entire_file(fmt.tprintf("%s/%s", s.source_root, name), context.temp_allocator)
-		if read_err == nil {
-			// 测试副本使用独立临时头文件，不能写入或依赖用户的 library。
-			group := strings.trim_suffix(name, ".hlsl")
-			text, _ := strings.replace_all(string(bytes), fmt.tprintf("../../../library/shader_dev/%s/params.generated.hlsli", group),
-				"params.generated.hlsli", context.temp_allocator)
-			bytes = transmute([]u8)text
-		}
-		if read_err != nil || os.write_entire_file(fmt.tprintf("%s/%s", root, name), bytes) != nil {
-			s.failed = true
-			return false
-		}
+	for name in ([]string{"Preview2D.oshader", "Preview3D.oshader", "Palette.hlsli"}) {
+		bytes, err := os.read_entire_file(fmt.tprintf("%s/%s", s.source_root, name), context.temp_allocator)
+		if err != nil || os.write_entire_file(fmt.tprintf("%s/%s", root, name), bytes) != nil do return false
 	}
-	params := fmt.tprintf("%s/params", root)
-	_ = os.make_directory(params)
-	for name in ([]string{"preview2d.odin", "preview3d.odin"}) {
-		bytes, read_err := os.read_entire_file(fmt.tprintf("%s/%s", s.parameter_directory, name), context.temp_allocator)
-		if read_err != nil || os.write_entire_file(fmt.tprintf("%s/%s", params, name), bytes) != nil do return false
-	}
-	s.parameter_directory = strings.clone(params)
 	s.source_root = s.temp_root
 	return true
 }
 
 cleanup_smoke :: proc(s: ^State) {
 	if s.temp_root == "" || s.failed do return
-	if s.multipass {
-		_ = os.remove(fmt.tprintf("%s/multipass.odin", s.parameter_directory))
-		_ = os.remove(fmt.tprintf("%s/TrailBlur.hlsl", s.temp_root))
-		_ = os.remove(fmt.tprintf("%s/TrailFeedback.hlsl", s.temp_root))
-	}
-	for name in ([]string{"Preview2D.hlsl", "Preview3D.hlsl", "Palette.hlsli"}) {
-		_ = os.remove(fmt.tprintf("%s/%s", s.temp_root, name))
-	}
-	for name in ([]string{"preview2d.odin", "preview3d.odin", "extra.odin"}) {
-		_ = os.remove(fmt.tprintf("%s/%s", s.parameter_directory, name))
-	}
-	_ = os.remove(s.parameter_directory)
-	delete(s.temp_parameter_directory)
-	_ = os.remove(fmt.tprintf("%s/red.png", s.temp_root))
-	_ = os.remove(fmt.tprintf("%s/Extra.hlsl", s.temp_root))
-	for name in ([]string{"feature-preset.json", "feature-bad.json", "feature.png"}) {
+	for name in ([]string{"Preview2D.oshader", "Preview3D.oshader", "Trail2D.oshader", "Trail3D.oshader", "Palette.hlsli", "Extra.oshader", "red.png", "feature-preset.json", "feature-bad.json", "feature.png"}) {
 		_ = os.remove(fmt.tprintf("%s/%s", s.temp_root, name))
 	}
 	_ = os.remove(s.temp_root)
@@ -97,7 +65,7 @@ scene_texture :: proc(s: ^State) -> ^foster.Texture {
 
 select_parameter_effect :: proc(s: ^State, parameter: int) {
 	for e, i in s.effects {
-		if e.desc.name != s.parameters[parameter].name do continue
+		if len(e.desc.passes) != 1 || string(e.desc.passes[0].params) != s.parameters[parameter].name do continue
 		lab.select_effect(s.tool, i)
 		return
 	}
@@ -112,8 +80,8 @@ capture :: proc(s: ^State, label: string) {
 	image := foster.ImageMake(s.output.Width, s.output.Height)
 	defer foster.ImageDispose(&image)
 	for &pixel, i in image.Pixels do pixel = {bytes[i*4], bytes[i*4+1], bytes[i*4+2], bytes[i*4+3]}
-	_ = os.make_directory_all("build")
-	path := fmt.tprintf("build/shader-lab-%s-%dx%d.png", label, image.Width, image.Height)
+	_ = os.make_directory_all(#directory + "/../../library/screenshots")
+	path := fmt.tprintf("%s/../../library/screenshots/shader-lab-%s-%dx%d.png", #directory, label, image.Width, image.Height)
 	check(s, foster.ImageWritePng(&image, path), "PNG write")
 	fmt.println(path)
 }
@@ -176,7 +144,7 @@ validate_frame :: proc(s: ^State, app: ^foster.App) {
 			string("this is intentionally invalid HLSL;")) == nil, "write bad include")
 		s.smoke_step = 1
 	} else if s.smoke_step == 1 {
-		if s.shaders[0].status != .Error || s.shaders[1].status != .Error do return
+		if s.pending_bank == nil || s.bank_error == "" do return
 		for &shader, i in s.shaders[:2] {
 			check(s, shader.revision == 1 && rawptr(shader.fragment.Resource) == s.initial_resources[i],
 				"compile failure retains previous shader")
@@ -188,7 +156,7 @@ validate_frame :: proc(s: ^State, app: ^foster.App) {
 			transmute([]u8)fixed) == nil, "repair shared include")
 		s.smoke_step = 2
 	} else if s.smoke_step == 2 {
-		if s.shaders[0].status != .Ready || s.shaders[1].revision < 2 do return
+		if s.pending_bank != nil || s.shaders[1].revision < 2 do return
 		check(s, scene_hash(s) != s.initial_pixels, "valid include visibly updates scene")
 		check(s, s.clock == 1 && s.yaw == 0.4 && lab.parameter_number(s.tool, 0, "hue") == 0.15 && lab.parameter_number(s.tool, 1, "hue") == 0.15,
 			"reload preserves time, camera and parameters")
@@ -200,22 +168,26 @@ validate_frame :: proc(s: ^State, app: ^foster.App) {
 		if s.shaders[0].revision < 2 do return
 		check(s, scene_hash(s) != s.initial_2d_pixels, "valid include visibly updates 2D scene")
 		capture(s, "recovered-2d")
-		path := fmt.tprintf("%s/Preview2D.hlsl", s.temp_root)
+		path := fmt.tprintf("%s/Preview2D.oshader", s.temp_root)
 		bytes, _ := os.read_entire_file(path, context.temp_allocator)
+		s.binding_source = strings.clone(string(bytes))
 		modified, _ := strings.replace_all(string(bytes), "color *= lerp",
 			"color *= Extra; color *= lerp", context.temp_allocator)
-		text := fmt.tprintf("%s\n%s", "cbuffer ExtraBlock : register(b2, space3) { float Extra; };", modified)
+		text, _ := strings.replace_all(modified, "HLSLPROGRAM", "HLSLPROGRAM\ncbuffer ExtraBlock : register(b2, space3) { float Extra; };", context.temp_allocator)
 		check(s, os.write_entire_file(path, transmute([]u8)text) == nil, "change binding contract")
 		s.smoke_step = 3
 	} else if s.smoke_step == 3 {
-		if s.shaders[0].status != .Error do return
-		check(s, s.shaders[0].revision == 2 && strings.contains(s.shaders[0].diagnostic, "bindings changed"),
+		if s.pending_bank == nil || s.bank_error == "" do return
+		check(s, s.shaders[0].revision == 2 && strings.contains(s.bank_error, "bindings changed"),
 			"binding changes rejected before GPU replacement")
+		check(s, os.write_entire_file(fmt.tprintf("%s/Preview2D.oshader", s.source_root), s.binding_source) == nil, "restore binding contract")
 		s.smoke_step = 4
 		s.capture_index = 0
 		lab.select_workspace(s.tool, 0)
 		s.effect_menu = true
 	} else if s.smoke_step == 4 {
+		if s.pending_bank != nil || s.elapsed < s.feature_next do return
+		s.feature_next = s.elapsed+0.06
 		switch s.capture_index {
 		case 0:
 			press_widget(s, app, "effect:Preview2D", 0.5)
@@ -223,7 +195,7 @@ validate_frame :: proc(s: ^State, app: ^foster.App) {
 			foster.InputMouseButton(&app.Input, .Left, false, app.Time.Elapsed)
 		case 4:
 			check(s, s.mode == 0, "Shader selection uses real UI input")
-			press_widget(s, app, "Preview2D:strength", 0.9)
+			press_widget(s, app, "Preview2D_main:strength", 0.9)
 		case 8:
 			check(s, lab.parameter_number(s.tool, 0, "strength") > 0.8 && lab.parameter_number(s.tool, 1, "strength") == 0.65 && s.yaw == 0.4,
 				"slider changes only active preview and does not orbit camera")
@@ -238,31 +210,27 @@ validate_frame :: proc(s: ^State, app: ^foster.App) {
 		}
 		s.capture_index += 1
 	} else if s.smoke_step == 5 {
+		if s.pending_bank != nil do return
 		if s.capture_index < 2 {
 			s.capture_index += 1
 			return
 		}
 		s.initial_pixels = scene_hash(s)
 		s.parameter_revision = s.shaders[1].revision
-		path := fmt.tprintf("%s/preview3d.odin", s.parameter_directory)
+		path := fmt.tprintf("%s/Preview3D.oshader", s.source_root)
 		bytes, _ := os.read_entire_file(path, context.temp_allocator)
 		s.parameter_source = strings.clone(string(bytes))
-		bad, _ := strings.replace_all(s.parameter_source, "max:\"5\"", "max:\"invalid\"", context.temp_allocator)
-		check(s, os.write_entire_file(path, bad) == nil, "write bad Odin metadata")
+		bad, _ := strings.replace_all(s.parameter_source, "Range(0,5)", "Range(0,invalid)", context.temp_allocator)
+		check(s, os.write_entire_file(path, bad) == nil, "write bad property declaration")
 		s.smoke_step = 6
 	} else if s.smoke_step == 6 {
 		if s.parameter_watch.status != .Error do return
 		check(s, s.shaders[1].revision == s.parameter_revision && scene_hash(s) == s.initial_pixels,
-			"invalid Odin metadata keeps both schema and GPU pixels")
+			"invalid property declaration keeps both schema and GPU pixels")
 		capture(s, "parameter-error")
-		text, _ := strings.replace_all(s.parameter_source, "Preview3D_Params :: struct {",
-			"Preview3D_Params :: struct {\n gain: f32 `ui:\"slider\" label:\"亮度\" min:\"0\" max:\"1\"`,", context.temp_allocator)
-		text, _ = strings.replace_all(text, "return {strength", "return {gain = 0.5, strength", context.temp_allocator)
-		check(s, os.write_entire_file(fmt.tprintf("%s/preview3d.odin", s.parameter_directory), text) == nil, "add Odin parameter")
-		path := fmt.tprintf("%s/Preview3D.hlsl", s.source_root)
-		bytes, _ := os.read_entire_file(path, context.temp_allocator)
-		shader, _ := strings.replace_all(string(bytes), "return float4(color * light", "return float4(color * _gain * light", context.temp_allocator)
-		check(s, os.write_entire_file(path, shader) == nil, "consume generated field in HLSL")
+		text, _ := strings.replace_all(s.parameter_source, "Properties\n    {", "Properties\n    {\n        _gain (\"亮度\", Range(0,1)) = 0.5", context.temp_allocator)
+		text, _ = strings.replace_all(text, "return float4(color * light", "return float4(color * _gain * light", context.temp_allocator)
+		check(s, os.write_entire_file(fmt.tprintf("%s/Preview3D.oshader", s.source_root), text) == nil, "add property and consume it in HLSL atomically")
 		s.smoke_step = 7
 	} else if s.smoke_step == 7 {
 		if s.parameters[1].has_pending || lab.parameter_number(s.tool, 1, "gain") != 0.5 do return
@@ -289,18 +257,22 @@ validate_frame :: proc(s: ^State, app: ^foster.App) {
 	} else if s.smoke_step == 8 {
 		check(s, scene_hash(s) != s.initial_pixels && s.shaders[1].revision == s.parameter_revision,
 			"texture changes pixels without recompiling")
-		text := "package shader_params\nimport mat \"olib:kit/material\"\nExtra_Shader :: \"Extra.hlsl\"\nExtra_Params :: struct { amount: f32 `ui:\"slider\"`, }\nextra_defaults :: proc() -> Extra_Params { return {amount = 0.75} }"
-		text = fmt.tprintf("%s\n%s", text, `Extra_Passes := []mat.Pass_Desc{
-    {id = "main", params = "Extra", draw = .Preview_Model, output = "color"},
-}
-Extra_Output :: "color"
-`)
-		check(s, os.write_entire_file(fmt.tprintf("%s/extra.odin", s.parameter_directory), text) == nil, "add third shader declaration")
-		shader := "#include \"params.generated.hlsli\"\nstruct I {float2 p:TEXCOORD0; float2 uv:TEXCOORD1;};\nstruct O {float4 p:SV_Position;};\nO vertex_main(I v) {O o; o.p=float4(v.p,0,1); return o;}\nfloat4 fragment_main(O v):SV_Target0 {return float4(_amount,0.2,0.3,1);}"
-		check(s, os.write_entire_file(fmt.tprintf("%s/Extra.hlsl", s.source_root), shader) == nil, "write third shader")
+		text := `Shader "Extra" {
+Properties { _amount ("Amount", Range(0,1)) = 0.75 }
+Pass "main" {
+Draw Preview_Model
+HLSLPROGRAM
+struct I {float2 p:TEXCOORD0; float2 uv:TEXCOORD1;};
+struct O {float4 p:SV_Position;};
+O vertex_main(I v) {O o; o.p=float4(v.p,0,1); return o;}
+float4 fragment_main(O v):SV_Target0 {return float4(_amount,0.2,0.3,1);}
+ENDHLSL
+}}
+`
+		check(s, os.write_entire_file(fmt.tprintf("%s/Extra.oshader", s.source_root), text) == nil, "add third shader")
 		s.smoke_step = 9
 	} else if s.smoke_step == 9 {
-		extra := lab.bank_index(s.bank, "Extra")
+		extra := lab.bank_index(s.bank, "Extra_main")
 		if extra < 0 || s.pending_bank != nil do return
 		check(s, s.parameters[extra].available, "discovers third shader without restarting")
 		select_parameter_effect(s, extra)
@@ -315,12 +287,12 @@ Extra_Output :: "color"
 		check(s, len(pixels) > pixel+3 && pixels[pixel] >= 189 && pixels[pixel] <= 193,
 			"b1 parameter binds correctly even when b0 is unused")
 		capture(s, "third-shader")
-		check(s, os.remove(fmt.tprintf("%s/extra.odin", s.parameter_directory)) == nil, "remove shader declaration")
+		check(s, os.remove(fmt.tprintf("%s/Extra.oshader", s.source_root)) == nil, "remove shader declaration")
 		s.smoke_step = 10
 	} else if s.smoke_step == 10 {
-		if lab.bank_index(s.bank, "Extra") >= 0 do return
+		if lab.bank_index(s.bank, "Extra_main") >= 0 do return
 		capture(s, "parameter-texture")
-		if !s.failed do fmt.println("PASS: 2D/3D reload, Odin generation rollback/recovery, layout migration, textures, discovery, UI, resize")
+		if !s.failed do fmt.println("PASS: 2D/3D reload, oshader parsing rollback/recovery, layout migration, textures, discovery, UI, resize")
 		delete(s.parameter_source)
 		s.parameter_source = ""
 		foster.Exit(app)

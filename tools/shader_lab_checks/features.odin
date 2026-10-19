@@ -6,7 +6,6 @@ import "core:os"
 
 import foster "olib:foster"
 import lab "olib:kit/tools/shader_lab"
-import dev "olib:kit/shaderdev"
 
 feature_image :: proc(s: ^State, color: foster.Color) {
 	image := foster.ImageMake(8, 8, color)
@@ -60,7 +59,7 @@ validate_features :: proc(s: ^State, app: ^foster.App) {
 		check(s, !lab.file_reply(s.tool, request.id, image_path), "stale async selection rejected")
 		old_texture := p.textures[0].Resource
 		bad := fmt.tprintf("%s/feature-bad.json", s.temp_root)
-		_ = os.write_entire_file(bad, `{"version":1,"group":"Preview2D","fields":[{"id":"image","kind":"Texture","texture":"missing.png"}]}`)
+		_ = os.write_entire_file(bad, `{"version":1,"group":"Preview2D_main","fields":[{"id":"image","kind":"Texture","texture":"missing.png"}]}`)
 		check(s, !lab.load_preset(s.tool, 0, bad) && old_texture == p.textures[0].Resource &&
 			lab.parameter_number(s.tool, 0, "strength") == 0.82, "invalid preset texture rolls back whole import")
 		check(s, lab.reset_defaults(s.tool, 0, 0), "reset one field")
@@ -71,7 +70,7 @@ validate_features :: proc(s: ^State, app: ^foster.App) {
 		s.preview_hooks = {s, feature_prepare, feature_draw}
 		s.custom_preview = true
 		s.parameter_revision = s.shaders[1].revision
-		dev.retry(&s.shaders[1])
+		s.parameter_watch.has_attempted = false
 		s.smoke_step = 1
 		s.elapsed = 0
 		return

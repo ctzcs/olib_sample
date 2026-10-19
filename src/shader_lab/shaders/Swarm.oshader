@@ -1,0 +1,63 @@
+// 大批量实例化的模型：每个实例的世界矩阵、tint 和 hue 都来自实例缓冲（Instance_Buffer），
+// 一次 Draw 画出全部实例。顶点接口见 olib kit/rendering/shader/lang 的 instanced 约定。
+Shader "Swarm"
+{
+    Label "模型实例化 / 大批量"
+    Preview 3D
+    Output "color"
+    Properties
+    {
+        [Instance] _hue ("Hue", Range(0,1)) = 0.15
+    }
+
+    Pass "body"
+    {
+        Label "本体"
+        Draw Model
+        Cull Back
+        Blend Opaque
+        ZTest Less
+        ZWrite On
+        Target { Clear (0.12,0.15,0.20,1) }
+        HLSLPROGRAM
+        #include "Palette.hlsli"
+        // Vertex b0: ViewProjection（世界矩阵来自实例）。Fragment b0: 引擎输入。
+        cbuffer ViewBlock : register(b0, space1) { float4x4 ViewProjection; float4x4 Unused; };
+        cbuffer PreviewBlock : register(b0, space3) {
+            float4 Clock;
+            float4 Pointer;
+            float4 Tint;
+        };
+        // OlibInstanceInput 必须是第一个成员；网格属性随后依次声明。
+        struct Input {
+            OlibInstanceInput Instance;
+            float3 Position : TEXCOORD0;
+            float3 Normal : TEXCOORD1;
+            float2 Uv : TEXCOORD2;
+            float4 Tangent : TEXCOORD3;
+        };
+        // 传给片元的变量必须全部在片元里被使用，否则 D3D12 的阶段接口对不上、管线创建失败。
+        struct Output {
+            float4 Position : SV_Position;
+            float3 Normal : TEXCOORD0;
+            OlibInstance Instance;
+        };
+        Output vertex_main(Input v)
+        {
+            Output o;
+            float4x4 world = olib_world(v.Instance);
+            o.Position = mul(mul(float4(v.Position, 1), world), ViewProjection);
+            o.Normal = mul(v.Normal, (float3x3)world);
+            o.Instance = olib_instance_from(v.Instance);
+            return o;
+        }
+        float4 fragment_main(Output v) : SV_Target0
+        {
+            olib_instance = v.Instance;
+            float light = 0.25 + 0.75 * saturate(dot(normalize(v.Normal), normalize(float3(-0.5, 0.8, 0.6))));
+            float3 color = palette(_hue + Clock.x * 0.05) * InstanceTint.rgb;
+            return float4(color * light, InstanceTint.a);
+        }
+        ENDHLSL
+    }
+}

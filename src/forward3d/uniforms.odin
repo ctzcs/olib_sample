@@ -1,6 +1,6 @@
 package main
 
-// Standard3D 着色器 cbuffer 的 CPU 侧打包（参考实现，原 kit/rendering3d uniforms3d）。
+// Standard3D 着色器 cbuffer 的 CPU 侧打包（参考实现，原 kit/rendering/3d uniforms3d）。
 //
 // 布局对照 shaders/Standard3DCommon.hlsli，全部 vec4 对齐（std140），槽位号与
 // HLSL 的 register(bN) 一致。改着色器的 cbuffer 时这里必须同步改，
@@ -10,7 +10,7 @@ package main
 import "core:math"
 
 import world "olib:kit/world"
-import r3d "olib:kit/rendering3d"
+import r3d "olib:kit/rendering/3d"
 
 // 分区：
 //   顶点槽 —— 阴影矩阵（槽 1）

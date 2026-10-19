@@ -39,4 +39,20 @@
     "allow_concurrent_runs": false,
     "reveal": "always"
   },
+  {
+    "label": "forward3d",
+    "command": "cmd.exe",
+    "args": ["/d", "/c", ".\\run.bat", "forward3d"],
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "allow_concurrent_runs": false,
+    "reveal": "always"
+  },
+  {
+    "label": "material3d swarm",
+    "command": "cmd.exe",
+    "args": ["/d", "/c", ".\\run.bat", "material3d","swarm"],
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "allow_concurrent_runs": false,
+    "reveal": "always"
+  },
 ]

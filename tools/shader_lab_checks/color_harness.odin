@@ -35,7 +35,7 @@ validate_color_frame :: proc(s: ^State, app: ^foster.App) {
 	case 2:
 		s.initial_pixels = scene_hash(s)
 		s.parameter_revision = s.shaders[1].revision
-		press_widget(s, app, "Preview3D:tint:color", 0.5)
+		press_widget(s, app, "Preview3D_main:tint:color", 0.5)
 	case 4, 8, 12, 17, 22, 26, 30, 34, 40, 45, 49, 55, 59, 63, 69, 73, 81, 85:
 		foster.InputMouseButton(&app.Input, .Left, false, app.Time.Elapsed)
 	case 6:
@@ -58,7 +58,7 @@ validate_color_frame :: proc(s: ^State, app: ^foster.App) {
 	case 24:
 		check(s, !s.color_picker.open && color_test_value(s, 1) == [4]f32{1, 1, 1, 1}, "cancel restores original color")
 		check(s, scene_hash(s) == s.initial_pixels, "cancel restores exact preview pixels")
-		press_widget(s, app, "Preview3D:tint:color", 0.5)
+		press_widget(s, app, "Preview3D_main:tint:color", 0.5)
 	case 28:
 		press_widget(s, app, "color-preset:2", 0.5)
 	case 32:
@@ -68,7 +68,7 @@ validate_color_frame :: proc(s: ^State, app: ^foster.App) {
 		check(s, !s.color_picker.open && value[0] > 0.95 && value[1] < 0.25 && value[3] == 1, "apply keeps chosen preset")
 		check(s, s.shaders[1].revision == s.parameter_revision, "color edits do not compile shaders")
 	case 38:
-		press_widget(s, app, "Preview3D:tint:color", 0.5)
+		press_widget(s, app, "Preview3D_main:tint:color", 0.5)
 	case 42:
 		color_test_move(s, app, "color-sv", 0.5, 0.5, true)
 	case 43:
@@ -87,7 +87,7 @@ validate_color_frame :: proc(s: ^State, app: ^foster.App) {
 		s.mode = 1
 	case 53:
 		s.initial_2d_pixels = scene_hash(s)
-		press_widget(s, app, "Preview2D:tint:color", 0.5)
+		press_widget(s, app, "Preview2D_main:tint:color", 0.5)
 	case 57:
 		press_widget(s, app, "color-preset:5", 0.5)
 	case 61:
@@ -99,7 +99,7 @@ validate_color_frame :: proc(s: ^State, app: ^foster.App) {
 		check(s, scene_hash(s) != s.initial_2d_pixels, "palette visibly updates 2D sprite")
 		capture(s, "palette-sprite")
 	case 67, 79:
-		press_widget(s, app, "Preview2D:tint:color", 0.5)
+		press_widget(s, app, "Preview2D_main:tint:color", 0.5)
 	case 71, 83:
 		press_widget(s, app, "color-preset:3", 0.5)
 	case 75:

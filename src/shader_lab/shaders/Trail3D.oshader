@@ -1,0 +1,172 @@
+// 参数、Pass 和 HLSL 在同一文件编辑。
+Shader "Trail3D"
+{
+    Label "三维拖尾"
+    Preview 3D
+    Output "result"
+    Properties
+    {
+        _source ("Source", 2D) = ""
+        _direction ("Direction", Vector2(-1,1)) = (1,0)
+        _radius ("Radius", Range(0,12)) = 3
+        _history ("History", 2D) = ""
+        _retention ("Retention", Range(0,0.99)) = 0.82
+        _strength ("Strength", Range(0,1)) = 0.65
+        _hue ("Hue", Range(0,1)) = 0.15
+        [Step(0.1)] _speed ("Flow speed", Range(0,5)) = 2
+        _tint ("Tint", Color) = (1,1,1,1)
+        _image ("Texture", 2D) = ""
+    }
+
+    Pass "feedback"
+    {
+        Label "上一帧反馈"
+        Draw Fullscreen
+        Preview 2D
+        Output "result"
+        Input _source "blur_y" Current
+        Input _history "result" Previous
+        HLSLPROGRAM
+cbuffer ViewBlock : register(b0, space1) { float4 View; };
+cbuffer PreviewBlock : register(b0, space3) {
+    float4 Clock; // time, delta time, frame index, sprite flag
+    float4 Pointer;
+    float4 Tint;
+};
+struct Input { float2 Position : TEXCOORD0; float2 Uv : TEXCOORD1; };
+struct Output { float4 Position : SV_Position; float2 Uv : TEXCOORD0; };
+Output vertex_main(Input v) {
+    Output o;
+    o.Position = float4(v.Position * View.xy, 0, 1);
+    o.Uv = v.Uv;
+    return o;
+}
+float4 fragment_main(Output v) : SV_Target0 {
+    float3 current = _source.Sample(_sourceSampler, v.Uv).rgb;
+    float2 historyUV = (v.Uv - 0.5) * 0.995 + 0.5;
+    float3 history = _history.Sample(_historySampler, historyUV).rgb;
+    return float4(lerp(current, history, _retention), 1);
+}
+        ENDHLSL
+    }
+
+    Pass "scene"
+    {
+        Label "绘制场景"
+        Draw Preview_Model
+        Preview 3D
+        Output "scene_color"
+        Target { Format Float16 }
+        HLSLPROGRAM
+#include "Palette.hlsli"
+// Vertex b0: matrices. Fragment b0: engine inputs; b1/textures: generated parameters.
+cbuffer MatrixBlock : register(b0, space1) { float4x4 Wvp; float4x4 World; };
+cbuffer PreviewBlock : register(b0, space3) {
+    float4 Clock;
+    float4 Pointer;
+    float4 Tint;
+};
+struct Input {
+    float3 Position : TEXCOORD0;
+    float3 Normal : TEXCOORD1;
+    float2 Uv : TEXCOORD2;
+    float4 Tangent : TEXCOORD3;
+};
+struct Output {
+    float4 Position : SV_Position;
+    float3 Normal : TEXCOORD0;
+    float2 Uv : TEXCOORD1;
+};
+Output vertex_main(Input v)
+{
+    Output o;
+    o.Position = mul(float4(v.Position, 1), Wvp);
+    o.Normal = mul(v.Normal, (float3x3)World);
+    o.Uv = v.Uv;
+    return o;
+}
+float4 fragment_main(Output v) : SV_Target0
+{
+    float light = 0.18 + 0.82 * saturate(dot(normalize(v.Normal), normalize(float3(-0.5, 0.8, 0.6))));
+    float ripple = sin(v.Uv.y * 28 + Clock.x * _speed) * _strength * 0.1;
+    float3 color = palette(v.Uv.y + _hue + ripple) * _tint.rgb;
+    float3 tex = _image.Sample(_imageSampler, v.Uv).rgb;
+    return float4(color * light * lerp(float3(1, 1, 1), tex, 0.2) * _tint.a, _tint.a);
+}
+        ENDHLSL
+    }
+
+    Pass "blur_x"
+    {
+        Label "横向模糊"
+        Draw Fullscreen
+        Preview 2D
+        Output "blur_x"
+        Input _source "scene_color" Current
+        Value _direction (1,0)
+        Target { Scale 0.5 Format Float16 }
+        HLSLPROGRAM
+cbuffer ViewBlock : register(b0, space1) { float4 View; };
+cbuffer PreviewBlock : register(b0, space3) {
+    float4 Clock;
+    float4 Pointer;
+    float4 Tint;
+};
+struct Input { float2 Position : TEXCOORD0; float2 Uv : TEXCOORD1; };
+struct Output { float4 Position : SV_Position; float2 Uv : TEXCOORD0; };
+Output vertex_main(Input v) {
+    Output o;
+    o.Position = float4(v.Position * View.xy, 0, 1);
+    o.Uv = v.Uv;
+    return o;
+}
+float4 fragment_main(Output v) : SV_Target0 {
+    uint width, height;
+    _source.GetDimensions(width, height);
+    float2 offset = _direction * _radius / float2(max(width, 1), max(height, 1));
+    return _source.Sample(_sourceSampler, v.Uv) * 0.4
+         + _source.Sample(_sourceSampler, v.Uv + offset) * 0.24
+         + _source.Sample(_sourceSampler, v.Uv - offset) * 0.24
+         + _source.Sample(_sourceSampler, v.Uv + offset * 2) * 0.06
+         + _source.Sample(_sourceSampler, v.Uv - offset * 2) * 0.06;
+}
+        ENDHLSL
+    }
+
+    Pass "blur_y"
+    {
+        Label "纵向模糊"
+        Draw Fullscreen
+        Preview 2D
+        Output "blur_y"
+        Input _source "blur_x" Current
+        Value _direction (0,1)
+        Target { Scale 0.5 Format Float16 }
+        HLSLPROGRAM
+cbuffer ViewBlock : register(b0, space1) { float4 View; };
+cbuffer PreviewBlock : register(b0, space3) {
+    float4 Clock;
+    float4 Pointer;
+    float4 Tint;
+};
+struct Input { float2 Position : TEXCOORD0; float2 Uv : TEXCOORD1; };
+struct Output { float4 Position : SV_Position; float2 Uv : TEXCOORD0; };
+Output vertex_main(Input v) {
+    Output o;
+    o.Position = float4(v.Position * View.xy, 0, 1);
+    o.Uv = v.Uv;
+    return o;
+}
+float4 fragment_main(Output v) : SV_Target0 {
+    uint width, height;
+    _source.GetDimensions(width, height);
+    float2 offset = _direction * _radius / float2(max(width, 1), max(height, 1));
+    return _source.Sample(_sourceSampler, v.Uv) * 0.4
+         + _source.Sample(_sourceSampler, v.Uv + offset) * 0.24
+         + _source.Sample(_sourceSampler, v.Uv - offset) * 0.24
+         + _source.Sample(_sourceSampler, v.Uv + offset * 2) * 0.06
+         + _source.Sample(_sourceSampler, v.Uv - offset * 2) * 0.06;
+}
+        ENDHLSL
+    }
+}

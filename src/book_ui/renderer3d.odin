@@ -9,7 +9,7 @@ package main
 //   绘制 —— draw_mesh3d / render_book3d
 
 import foster "olib:foster"
-import r3d "olib:kit/rendering3d"
+import r3d "olib:kit/rendering/3d"
 
 // ==============================================================================
 // 类型与书壳尺寸

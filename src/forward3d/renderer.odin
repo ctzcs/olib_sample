@@ -1,9 +1,9 @@
 package main
 
-// Standard 前向渲染器（参考实现，原 kit/rendering3d renderer3d + shader3d 的 Standard 部分）。
+// Standard 前向渲染器（参考实现，原 kit/rendering/3d renderer3d + shader3d 的 Standard 部分）。
 //
 // 这是“复制到游戏里按需修改”的起点，不是库 API：光照模型、槽位约定、
-// 阴影/后处理是否要做都由游戏决定。kit/rendering3d 只提供机制
+// 阴影/后处理是否要做都由游戏决定。kit/rendering/3d 只提供机制
 // （Mesh 上传、泛型排序队列、字节码按驱动选择、std140 写入、DebugDraw3D）。
 //
 // 每帧：renderer_render —— 片元公共槽（光照/阴影关闭/点光）设一次，
@@ -11,7 +11,7 @@ package main
 // 蒙皮项经 palette 槽（2、3）注入骨骼矩阵（animation.compute_palette 产出）。
 
 import world "olib:kit/world"
-import r3d "olib:kit/rendering3d"
+import r3d "olib:kit/rendering/3d"
 import foster "olib:foster"
 
 // 分区：

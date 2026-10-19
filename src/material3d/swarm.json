@@ -1,0 +1,9 @@
+{
+  "version": 2,
+  "effect": "Swarm",
+  "groups": [
+    {"version": 1, "group": "Swarm_body", "fields": [
+      {"id": "hue", "kind": "Scalar", "number": [0.15, 0, 0, 0]}
+    ]}
+  ]
+}

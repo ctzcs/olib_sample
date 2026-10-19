@@ -2,7 +2,7 @@
   "version": 2,
   "effect": "SpriteShadow",
   "groups": [
-    {"version": 1, "group": "Sprite", "fields": [
+    {"version": 1, "group": "SpriteShadow_body", "fields": [
       {"id": "hue", "kind": "Scalar", "number": [0.15, 0, 0, 0]},
       {"id": "opacity", "kind": "Scalar", "number": [1, 0, 0, 0]}
     ]}

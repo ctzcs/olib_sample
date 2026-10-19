@@ -1,0 +1,109 @@
+// 参数、Pass 和 HLSL 在同一文件编辑。
+Shader "SpriteShadow"
+{
+    Label "精灵材质 / 阴影 + 本体"
+    Preview 2D
+    Output "color"
+    Properties
+    {
+        _image ("Sprite image", 2D) = ""
+        // [Instance] 字段随每个精灵的顶点传入：不同 hue / opacity 的精灵仍可合成一次 Draw。
+        [Instance] _hue ("Hue", Range(0,1)) = 0.15
+        [Instance] _opacity ("Opacity", Range(0,1)) = 1
+    }
+
+    Pass "shadow"
+    {
+        Label "阴影"
+        Draw Sprite
+        SpriteTexture _image
+        Target { Clear (0.12,0.15,0.20,1) }
+        HLSLPROGRAM
+#define SPRITE_SHADOW 1
+#include "Palette.hlsli"
+
+// Instanced sprite: OlibInstanceInput（必须是第一个成员）携带变换、图集矩形、tint 与 [Instance] 字段，
+// Corner 是单位四边形的角点；olib_sprite_vertex 得到最终目标像素位置与 UV（含图集区域）。
+cbuffer ViewBlock : register(b0, space1) { float4x4 Projection; };
+cbuffer FrameBlock : register(b0, space3) {
+    float4 Clock;
+    float4 Pointer;
+    float4 Tint;
+};
+struct Input { OlibInstanceInput Instance; float2 Corner : TEXCOORD0; };
+struct Output { float4 Position : SV_Position; float2 Uv : TEXCOORD0; OlibInstance Instance; };
+Output vertex_main(Input v)
+{
+    Output o;
+    float2 position;
+    olib_sprite_vertex(v.Instance, v.Corner, position, o.Uv);
+    o.Position = mul(Projection, float4(position, 0, 1));
+    o.Instance = olib_instance_from(v.Instance);
+    // Shadow geometry shares the frame UV, so atlas neighbours cannot bleed in.
+#ifdef SPRITE_SHADOW
+    o.Position.xy += float2(Projection[0][0], Projection[1][1]) * 12;
+#endif
+    return o;
+}
+float4 fragment_main(Output v) : SV_Target0
+{
+    olib_instance = v.Instance;
+    float4 tex = _image.Sample(_imageSampler, v.Uv);
+    float opacity = _opacity * InstanceTint.a;
+    float3 rgb = tex.rgb * palette(_hue) * InstanceTint.rgb;
+#ifdef SPRITE_SHADOW
+    return float4(float3(0.02, 0.03, 0.06) * tex.a * opacity * 0.65, tex.a * opacity * 0.65);
+#else
+    return float4(rgb * opacity, tex.a * opacity);
+#endif
+}
+        ENDHLSL
+    }
+
+    Pass "body"
+    {
+        Label "本体"
+        Draw Sprite
+        SpriteTexture _image
+        Target { Clear (0.12,0.15,0.20,1) }
+        HLSLPROGRAM
+#include "Palette.hlsli"
+
+// Instanced sprite: OlibInstanceInput（必须是第一个成员）携带变换、图集矩形、tint 与 [Instance] 字段，
+// Corner 是单位四边形的角点；olib_sprite_vertex 得到最终目标像素位置与 UV（含图集区域）。
+cbuffer ViewBlock : register(b0, space1) { float4x4 Projection; };
+cbuffer FrameBlock : register(b0, space3) {
+    float4 Clock;
+    float4 Pointer;
+    float4 Tint;
+};
+struct Input { OlibInstanceInput Instance; float2 Corner : TEXCOORD0; };
+struct Output { float4 Position : SV_Position; float2 Uv : TEXCOORD0; OlibInstance Instance; };
+Output vertex_main(Input v)
+{
+    Output o;
+    float2 position;
+    olib_sprite_vertex(v.Instance, v.Corner, position, o.Uv);
+    o.Position = mul(Projection, float4(position, 0, 1));
+    o.Instance = olib_instance_from(v.Instance);
+    // Shadow geometry shares the frame UV, so atlas neighbours cannot bleed in.
+#ifdef SPRITE_SHADOW
+    o.Position.xy += float2(Projection[0][0], Projection[1][1]) * 12;
+#endif
+    return o;
+}
+float4 fragment_main(Output v) : SV_Target0
+{
+    olib_instance = v.Instance;
+    float4 tex = _image.Sample(_imageSampler, v.Uv);
+    float opacity = _opacity * InstanceTint.a;
+    float3 rgb = tex.rgb * palette(_hue) * InstanceTint.rgb;
+#ifdef SPRITE_SHADOW
+    return float4(float3(0.02, 0.03, 0.06) * tex.a * opacity * 0.65, tex.a * opacity * 0.65);
+#else
+    return float4(rgb * opacity, tex.a * opacity);
+#endif
+}
+        ENDHLSL
+    }
+}

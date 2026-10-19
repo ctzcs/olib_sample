@@ -1,0 +1,51 @@
+// 参数、Pass 和 HLSL 在同一文件编辑。
+Shader "Preview2D"
+{
+    Label "流动纹理"
+    Preview 2D
+    Output "color"
+    Properties
+    {
+        _strength ("Strength", Range(0,1)) = 0.65
+        _hue ("Hue", Range(0,1)) = 0.15
+        [Step(0.1)] _speed ("Flow speed", Range(0,5)) = 2
+        _tint ("Tint", Color) = (1,1,1,1)
+        _image ("Texture", 2D) = ""
+    }
+
+    Pass "main"
+    {
+        Label "绘制场景"
+        Draw Preview_Model
+        Target { Clear (0.06666667,0.08235294,0.10196079,1) }
+        HLSLPROGRAM
+#include "Palette.hlsli"
+// Vertex b0: view. Fragment b0: engine inputs; b1/textures: generated parameters.
+cbuffer ViewBlock : register(b0, space1) { float4 View; };
+cbuffer PreviewBlock : register(b0, space3) {
+    float4 Clock; // time, unused, unused, sprite mode
+    float4 Pointer; // mouse UV, viewport pixels
+    float4 Tint;
+};
+struct Input { float2 Position : TEXCOORD0; float2 Uv : TEXCOORD1; };
+struct Output { float4 Position : SV_Position; float2 Uv : TEXCOORD0; };
+Output vertex_main(Input v)
+{
+    Output o;
+    o.Position = float4(v.Position * View.xy, 0, 1);
+    o.Uv = v.Uv;
+    return o;
+}
+float4 fragment_main(Output v) : SV_Target0
+{
+    float2 p = (v.Uv - 0.5) * float2(Pointer.z / max(Pointer.w, 1), 1);
+    float wave = sin(length(p) * 26 - Clock.x * _speed);
+    float3 color = palette(length(p) * 2 + _hue + wave * _strength * 0.15);
+    float4 tex = _image.Sample(_imageSampler, v.Uv);
+    color *= lerp(1.0, tex.rgb, Clock.w) * _tint.rgb;
+    float alpha = lerp(1.0, tex.a, Clock.w) * _tint.a;
+    return float4(color * alpha, alpha);
+}
+        ENDHLSL
+    }
+}

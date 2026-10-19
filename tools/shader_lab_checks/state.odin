@@ -22,7 +22,7 @@ State :: struct {
 	shot, smoke, color_smoke, color_test_blur, failed: bool,
 	capture_index, smoke_step, validated_serial: int,
 	target_release_serial: int,
-	parameter_source, temp_root, temp_parameter_directory: string,
+	parameter_source, binding_source, temp_root: string,
 	parameter_revision: u64,
 	initial_resources: [2]rawptr,
 	initial_pixels, initial_2d_pixels: u64,
@@ -30,7 +30,7 @@ State :: struct {
 }
 
 // 在 lab.init 之前调用；隔离测试源码，生成的临时路径在 dispose 时释放。
-prepare :: proc(s: ^State, tool: ^lab.Session, source, params, cache: string,
+prepare :: proc(s: ^State, tool: ^lab.Session, source: string,
 	shot, smoke, colors: bool, multipass: bool = false) -> bool {
 	s.tool = tool
 	s.shot = shot
@@ -38,13 +38,9 @@ prepare :: proc(s: ^State, tool: ^lab.Session, source, params, cache: string,
 	s.smoke = smoke || colors || multipass
 	s.multipass = multipass
 	tool.source_root = source
-	tool.parameter_directory = params
-	tool.generated_directory = cache
-	if s.smoke {
-		tool.generated_directory = ""
+	if s.smoke || s.shot {
 		if !prepare_smoke(s) do return false
-		s.temp_parameter_directory = tool.parameter_directory
-		if multipass && !prepare_multipass(s, source, params) do return false
+		if multipass && !prepare_multipass(s, source) do return false
 	}
 	return true
 }
@@ -65,5 +61,6 @@ dispose :: proc(s: ^State) {
 	cleanup_smoke(s)
 	delete(s.parameter_source)
 	delete(s.graph_source)
+	delete(s.binding_source)
 	delete(s.graph_shader)
 }

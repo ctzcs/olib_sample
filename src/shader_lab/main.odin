@@ -24,14 +24,10 @@ main :: proc() {
 	host := new(Host)
 	defer free(host)
 	source := #directory + "/shaders"
-	params := #directory + "/shader_params"
-	cache := #directory + "/../../library/shader_dev"
 	for arg, i in os.args {
 		if arg == "source" && i+1 < len(os.args) do source = os.args[i+1]
-		if arg == "params" && i+1 < len(os.args) do params = os.args[i+1]
-		if arg == "cache" && i+1 < len(os.args) do cache = os.args[i+1]
 	}
-	if !checks.prepare(&host.validation, &host.tool, source, params, cache,
+	if !checks.prepare(&host.validation, &host.tool, source,
 		appkit.has_arg(os.args, "shot"), appkit.has_arg(os.args, "smoke") || appkit.has_arg(os.args, "features"),
 		appkit.has_arg(os.args, "colors"), appkit.has_arg(os.args, "multipass") || appkit.has_arg(os.args, "hierarchy") || appkit.has_arg(os.args, "targets")) {
 		os.exit(1)
@@ -74,8 +70,6 @@ startup :: proc(app: ^foster.App) {
 	if ok {
 		ok = lab.init(&host.tool, &app.GraphicsDevice, {
 			source_root = host.tool.source_root,
-			parameter_directory = host.tool.parameter_directory,
-			generated_directory = host.tool.generated_directory,
 			font = &host.font, font_texture = host.font_texture,
 			paused = host.validation.shot || host.validation.smoke,
 			file_dialogs = true,
@@ -128,7 +122,7 @@ host_input :: proc(app: ^foster.App, validation: ^checks.State) -> lab.Input {
 		escape = foster.KeyboardPressed(keys, .Escape),
 		vertical_adjust = f32(int(foster.PressedOrRepeated(keys, .Down))-int(foster.PressedOrRepeated(keys, .Up))),
 	}
-	if validation.color_smoke || validation.features || validation.multipass do input.focused = !validation.color_test_blur
+	if validation.smoke do input.focused = !validation.color_test_blur
 	if foster.KeyboardPressed(keys, .Tab) {
 		input.navigation.next = foster.KeyboardDown(keys, .LeftShift) ? -1 : 1
 	}

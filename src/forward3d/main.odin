@@ -2,7 +2,7 @@ package main
 
 // forward3d：参考前向渲染器的演示场景。
 //
-// kit/rendering3d 只提供机制（Mesh 上传、泛型排序队列、字节码选择、std140、
+// kit/rendering/3d 只提供机制（Mesh 上传、泛型排序队列、字节码选择、std140、
 // DebugDraw3D）；光照与材质在本目录的 renderer / uniforms / material / shaders 里，
 // 游戏按自己的画风复制改写。
 //
@@ -16,7 +16,7 @@ import "core:os"
 
 import dasset "olib:core/dasset"
 import app "olib:kit/app"
-import r3d "olib:kit/rendering3d"
+import r3d "olib:kit/rendering/3d"
 import world "olib:kit/world"
 import foster "olib:foster"
 
