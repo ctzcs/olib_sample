@@ -281,8 +281,10 @@ render :: proc(app: ^foster.App) {
 		check(s, len(bytes) == pixels.X*pixels.Y*4, "capture readback")
 		if len(bytes) == pixels.X*pixels.Y*4 {
 			for &pixel, i in image.Pixels do pixel = {bytes[i*4], bytes[i*4+1], bytes[i*4+2], bytes[i*4+3]}
-			name := fmt.tprintf("build/gizmo2d-%dx%d.png", pixels.X, pixels.Y)
-			check(s, foster.ImageWritePng(&image, name), "capture write")
+			name := fmt.tprintf("gizmo2d-%dx%d.png", pixels.X, pixels.Y)
+			directory :: #directory + "/../../library/screenshots"
+			os.make_directory_all(directory)
+			check(s, foster.ImageWritePng(&image, fmt.tprintf("%s/%s", directory, name)), "capture write")
 			fmt.println(name)
 		}
 	}

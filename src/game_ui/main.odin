@@ -205,7 +205,7 @@ render :: proc(g: ^foster.App) {
 			math.clamp((my - origin.y) / fit, 265, 600)}
 	}
 	// submit 后记录清空：截图那一帧直接提交到离屏目标。
-	capture_now := shot && !pending && frame >= (smoke ? 23 : 10)
+	capture_now := shot && !pending && frame + 1 >= (smoke ? 23 : 10)
 	output := capture_now ? foster.DrawableTargetFromTarget(&capture) : target
 	foster.GraphicsDeviceClear(&g.GraphicsDevice, output, {8, 14, 18, 255})
 	r2d.submit(&renderer, {target = output})
@@ -284,5 +284,7 @@ save_capture :: proc() {
 		pixel = {bytes[i * 4], bytes[i * 4 + 1], bytes[i * 4 + 2], bytes[i * 4 + 3]}
 	}
 	name := paused ? "game_ui_modal.png" : app.has_arg(os.args, "scaled") ? "game_ui_scaled.png" : !bag_open ? "game_ui_hud.png" : app.has_arg(os.args, "scroll") ? "game_ui_scroll.png" : "game_ui.png"
-	fmt.println(name, foster.ImageWritePng(&image, name))
+	directory :: #directory + "/../../library/screenshots"
+	os.make_directory_all(directory)
+	fmt.println(name, foster.ImageWritePng(&image, fmt.tprintf("%s/%s", directory, name)))
 }

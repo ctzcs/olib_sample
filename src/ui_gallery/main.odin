@@ -251,5 +251,7 @@ save_capture :: proc() {
 		app.has_arg(os.args, "narrow") ? "-narrow" : "",
 		app.has_arg(os.args, "modal") ? "-modal" : "")
 	fmt.printf("Final output: %dx%d, UI scale %.2f\n", capture.Width, capture.Height, ui_scale)
-	fmt.println(name, foster.ImageWritePng(&image, name))
+	directory :: #directory + "/../../library/screenshots"
+	os.make_directory_all(directory)
+	fmt.println(name, foster.ImageWritePng(&image, fmt.tprintf("%s/%s", directory, name)))
 }

@@ -1,7 +1,7 @@
 package main
 
 // 自动化检查用的命令行模式。正常运行只用到 font / scaled / back / rotated / underside。
-//   shot ：渲染几帧，把截图 PNG 存到工作目录后退出（截图回归）
+//   shot ：渲染几帧，把截图 PNG 存到 library/screenshots后退出（截图回归）
 //   test ：启动时做几何检查，之后按帧号执行一段点击与翻页脚本；有失败则退出码为 1
 
 // 分区：
@@ -157,7 +157,9 @@ save_capture :: proc(world: ^World) {
 		p = {data[i * 4], data[i * 4 + 1], data[i * 4 + 2], data[i * 4 + 3]}
 	}
 	name := shot_file_name(world.opts)
-	ok := foster.ImageWritePng(&image, name)
+	directory :: #directory + "/../../library/screenshots"
+	os.make_directory_all(directory)
+	ok := foster.ImageWritePng(&image, fmt.tprintf("%s/%s", directory, name))
 	fmt.println(name, ok)
 	if !ok {
 		world.harness.test_failures += 1
