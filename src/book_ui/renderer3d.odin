@@ -9,6 +9,7 @@ package main
 //   绘制 —— draw_mesh3d / render_book3d
 
 import foster "olib:foster"
+import mat "olib:kit/rendering/material"
 import r3d "olib:kit/rendering/3d"
 
 // ==============================================================================
@@ -71,17 +72,15 @@ Book_Renderer :: struct {
 
 renderer_init :: proc(r: ^Book_Renderer, app: ^foster.App) -> bool {
 	device := &app.GraphicsDevice
-	if !r3d.shader3d_driver_supported(device.Driver) do return false
-	vs := r3d.shader3d_pick_code(
-		device.Driver,
-		#load("shaders/Compiled/Book.vertex.spv"),
-		#load("shaders/Compiled/Book.vertex.dxil"),
-	)
-	fs := r3d.shader3d_pick_code(
-		device.Driver,
-		#load("shaders/Compiled/Book.fragment.spv"),
-		#load("shaders/Compiled/Book.fragment.dxil"),
-	)
+	if !mat.shader_driver_supported(device.Driver) do return false
+	vs := mat.shader_pick(device.Driver, {
+		spv = #load("shaders/Compiled/Book.vertex.spv"),
+		dxil = #load("shaders/Compiled/Book.vertex.dxil"),
+	})
+	fs := mat.shader_pick(device.Driver, {
+		spv = #load("shaders/Compiled/Book.fragment.spv"),
+		dxil = #load("shaders/Compiled/Book.fragment.dxil"),
+	})
 	foster.ShaderInit(
 		&r.vertex_shader,
 		device,

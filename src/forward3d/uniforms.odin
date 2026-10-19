@@ -10,7 +10,7 @@ package main
 import "core:math"
 
 import world "olib:kit/world"
-import r3d "olib:kit/rendering/3d"
+import mat "olib:kit/rendering/material"
 
 // 分区：
 //   顶点槽 —— 阴影矩阵（槽 1）
@@ -24,7 +24,7 @@ SHADOW_MATRIX_BLOCK_SIZE :: 64 // 单矩阵 LightViewProjection
 
 pack_shadow_matrix_block :: proc(buf: []u8, light_view_projection: world.Matrix4) -> bool {
 	if len(buf) < SHADOW_MATRIX_BLOCK_SIZE { return false }
-	r3d.std140_write_matrix(buf, 0, light_view_projection)
+	mat.std140_write_matrix(buf, 0, light_view_projection)
 	return true
 }
 
@@ -50,13 +50,13 @@ LIGHT_BLOCK_SIZE :: 112
 
 pack_light_block :: proc(buf: []u8, light: ^Light_Block) -> bool {
 	if len(buf) < LIGHT_BLOCK_SIZE { return false }
-	r3d.std140_write_vec4(buf, 0, light.light_direction)
-	r3d.std140_write_vec4(buf, 16, light.ambient)
-	r3d.std140_write_vec4(buf, 32, light.diffuse)
-	r3d.std140_write_vec4(buf, 48, light.camera_position)
-	r3d.std140_write_vec4(buf, 64, light.color_pipeline)
-	r3d.std140_write_vec4(buf, 80, light.environment)
-	r3d.std140_write_vec4(buf, 96, light.environment_size)
+	mat.std140_write_vec4(buf, 0, light.light_direction)
+	mat.std140_write_vec4(buf, 16, light.ambient)
+	mat.std140_write_vec4(buf, 32, light.diffuse)
+	mat.std140_write_vec4(buf, 48, light.camera_position)
+	mat.std140_write_vec4(buf, 64, light.color_pipeline)
+	mat.std140_write_vec4(buf, 80, light.environment)
+	mat.std140_write_vec4(buf, 96, light.environment_size)
 	return true
 }
 
@@ -93,12 +93,12 @@ MATERIAL_BLOCK_SIZE :: 96
 
 pack_material_block :: proc(buf: []u8, m: ^Material_Block) -> bool {
 	if len(buf) < MATERIAL_BLOCK_SIZE { return false }
-	r3d.std140_write_vec4(buf, 0, m.base_color)
-	r3d.std140_write_vec4(buf, 16, m.flags)
-	r3d.std140_write_vec4(buf, 32, m.alpha)
-	r3d.std140_write_vec4(buf, 48, m.pbr)
-	r3d.std140_write_vec4(buf, 64, m.textures)
-	r3d.std140_write_vec4(buf, 80, m.emissive)
+	mat.std140_write_vec4(buf, 0, m.base_color)
+	mat.std140_write_vec4(buf, 16, m.flags)
+	mat.std140_write_vec4(buf, 32, m.alpha)
+	mat.std140_write_vec4(buf, 48, m.pbr)
+	mat.std140_write_vec4(buf, 64, m.textures)
+	mat.std140_write_vec4(buf, 80, m.emissive)
 	return true
 }
 
@@ -169,22 +169,22 @@ pack_point_light_block :: proc(buf: []u8, lights: []Point_Light, spot_lights: []
 	if len(buf) < POINT_LIGHT_BLOCK_SIZE { return false }
 
 	count := min(len(lights), MAX_POINT_LIGHTS)
-	r3d.std140_write_vec4(buf, 0, {f32(count), 0, 0, 0})
+	mat.std140_write_vec4(buf, 0, {f32(count), 0, 0, 0})
 	for i in 0..<MAX_POINT_LIGHTS {
 		if i < count {
 			l := lights[i]
-			r3d.std140_write_vec4(buf, 16 + i*16, {l.position[0], l.position[1], l.position[2], l.range})
-			r3d.std140_write_vec4(buf, 16 + (MAX_POINT_LIGHTS + i)*16, {l.color[0], l.color[1], l.color[2], l.intensity})
+			mat.std140_write_vec4(buf, 16 + i*16, {l.position[0], l.position[1], l.position[2], l.range})
+			mat.std140_write_vec4(buf, 16 + (MAX_POINT_LIGHTS + i)*16, {l.color[0], l.color[1], l.color[2], l.intensity})
 		} else {
-			r3d.std140_write_vec4(buf, 16 + i*16, {0, 0, 0, 0})
-			r3d.std140_write_vec4(buf, 16 + (MAX_POINT_LIGHTS + i)*16, {0, 0, 0, 0})
+			mat.std140_write_vec4(buf, 16 + i*16, {0, 0, 0, 0})
+			mat.std140_write_vec4(buf, 16 + (MAX_POINT_LIGHTS + i)*16, {0, 0, 0, 0})
 		}
 	}
 
 	// 聚光：meta 在 33 号 vec4，其后 4 组各 16
 	base := 33 * 16
 	spot_count := min(len(spot_lights), MAX_POINT_LIGHTS)
-	r3d.std140_write_vec4(buf, base, {f32(spot_count), 0, 0, 0})
+	mat.std140_write_vec4(buf, base, {f32(spot_count), 0, 0, 0})
 	for i in 0..<MAX_POINT_LIGHTS {
 		if i < spot_count {
 			l := spot_lights[i]
@@ -199,13 +199,13 @@ pack_point_light_block :: proc(buf: []u8, lights: []Point_Light, spot_lights: []
 			outer := math.clamp(l.outer_angle, 0.001, math.PI / 2)
 			inner := math.clamp(l.inner_angle, 0, outer)
 			color := [3]f32{max(l.color[0], 0), max(l.color[1], 0), max(l.color[2], 0)}
-			r3d.std140_write_vec4(buf, base + 16 + i*16, {l.position[0], l.position[1], l.position[2], max(l.range, 0)})
-			r3d.std140_write_vec4(buf, base + 16 + (16 + i)*16, {color[0], color[1], color[2], max(l.intensity, 0)})
-			r3d.std140_write_vec4(buf, base + 16 + (32 + i)*16, {dx, dy, dz, math.cos(outer)})
-			r3d.std140_write_vec4(buf, base + 16 + (48 + i)*16, {math.cos(inner), 0, 0, 0})
+			mat.std140_write_vec4(buf, base + 16 + i*16, {l.position[0], l.position[1], l.position[2], max(l.range, 0)})
+			mat.std140_write_vec4(buf, base + 16 + (16 + i)*16, {color[0], color[1], color[2], max(l.intensity, 0)})
+			mat.std140_write_vec4(buf, base + 16 + (32 + i)*16, {dx, dy, dz, math.cos(outer)})
+			mat.std140_write_vec4(buf, base + 16 + (48 + i)*16, {math.cos(inner), 0, 0, 0})
 		} else {
 			for g in 0..<4 {
-				r3d.std140_write_vec4(buf, base + 16 + (g*16 + i)*16, {0, 0, 0, 0})
+				mat.std140_write_vec4(buf, base + 16 + (g*16 + i)*16, {0, 0, 0, 0})
 			}
 		}
 	}

@@ -11,6 +11,7 @@ package main
 // 蒙皮项经 palette 槽（2、3）注入骨骼矩阵（animation.compute_palette 产出）。
 
 import world "olib:kit/world"
+import mat "olib:kit/rendering/material"
 import r3d "olib:kit/rendering/3d"
 import foster "olib:foster"
 
@@ -54,32 +55,31 @@ Standard_Shaders :: struct {
 }
 
 standard_shaders_init :: proc(s: ^Standard_Shaders, device: ^foster.GraphicsDevice) -> bool {
-	if !r3d.shader3d_driver_supported(device.Driver) { return false }
-	pick :: r3d.shader3d_pick_code
+	if !mat.shader_driver_supported(device.Driver) { return false }
 	driver := device.Driver
 
 	foster.ShaderInit(&s.static_vertex, device, foster.ShaderCreateInfo{
 		Stage              = .Vertex,
-		Code               = pick(driver, standard3d_vertex_spv, standard3d_vertex_dxil, standard3d_vertex_msl),
+		Code               = mat.shader_pick(driver, {standard3d_vertex_spv, standard3d_vertex_dxil, standard3d_vertex_msl}),
 		UniformBufferCount = 2, // b0 矩阵块 / b1 阴影矩阵
 		EntryPoint         = "vertex_main",
 	}, "Standard3DVertex")
 	foster.ShaderInit(&s.static_fragment, device, foster.ShaderCreateInfo{
 		Stage              = .Fragment,
-		Code               = pick(driver, standard3d_fragment_spv, standard3d_fragment_dxil, standard3d_fragment_msl),
+		Code               = mat.shader_pick(driver, {standard3d_fragment_spv, standard3d_fragment_dxil, standard3d_fragment_msl}),
 		SamplerCount       = STANDARD3D_FRAGMENT_SAMPLERS,
 		UniformBufferCount = 4, // b0 光照 / b1 材质 / b2 阴影 / b3 点光
 		EntryPoint         = "fragment_main",
 	}, "Standard3DFragment")
 	foster.ShaderInit(&s.skinned_vertex, device, foster.ShaderCreateInfo{
 		Stage              = .Vertex,
-		Code               = pick(driver, standard3d_skinned_vertex_spv, standard3d_skinned_vertex_dxil, standard3d_skinned_vertex_msl),
+		Code               = mat.shader_pick(driver, {standard3d_skinned_vertex_spv, standard3d_skinned_vertex_dxil, standard3d_skinned_vertex_msl}),
 		UniformBufferCount = 4, // 再加 b2/b3 palette 两块
 		EntryPoint         = "vertex_main",
 	}, "Standard3DSkinnedVertex")
 	foster.ShaderInit(&s.skinned_fragment, device, foster.ShaderCreateInfo{
 		Stage              = .Fragment,
-		Code               = pick(driver, standard3d_skinned_fragment_spv, standard3d_skinned_fragment_dxil, standard3d_skinned_fragment_msl),
+		Code               = mat.shader_pick(driver, {standard3d_skinned_fragment_spv, standard3d_skinned_fragment_dxil, standard3d_skinned_fragment_msl}),
 		SamplerCount       = STANDARD3D_FRAGMENT_SAMPLERS,
 		UniformBufferCount = 4,
 		EntryPoint         = "fragment_main",
