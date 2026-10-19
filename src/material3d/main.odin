@@ -20,7 +20,11 @@ State :: struct {
 	materials: mat.Material_Library,
 	materials_shown: [2]^mat.Material, // 同一网格、同一材质文件的两份实例：右边改了 hue
 	mesh: foster.Mesh,
-	target: foster.Target,
+	target, inset: foster.Target,
+	renderer: r3d.Render3D,
+	views, automatic: bool,
+	submit_sum: f64,
+	measured_frames, draw_calls, submitted_instances: int,
 	batch: r2d.Render2D,
 	camera: world.Camera3D,
 	time: f32,
@@ -34,9 +38,9 @@ State :: struct {
 	swarm_count: int,
 	shot: bool,
 	frame: int,
-	delta_sum: f64, // shot 模式下统计平均帧时间
+	delta_sum: f64, // shot 模式下统计平均帧时间，含帧率限制
 	cpu_sum: f64, // shot 模式下 render 过程的 CPU 耗时之和（秒）
-	// 性能对比参数：immediate 不限帧并关闭垂直同步（测真实 GPU 耗时）；back 把远处实例排在前面（最差情况）；
+	// 性能对比参数：immediate 不限帧并关闭垂直同步（帧时间仍不是 GPU 时间）；back 把远处实例排在前面（最差情况）；
 	// rings= / segments= 球体精度；samples=1|2|4 MSAA。
 	immediate, back: bool,
 	rings, segments: int,
@@ -52,9 +56,14 @@ main :: proc() {
 	s.path = #directory + "/material.json"
 	s.swarm_count = SWARM_DEFAULT_COUNT
 	s.rings, s.segments, s.samples = 2, 4, .Four // 百万个只有几像素的球体：低模足够
+	count_requested := false
 	for arg in os.args[1:] {
 		switch {
 		case arg == "swarm": s.swarm_on = true
+		case arg == "models":
+			s.swarm_on = true
+			s.automatic = true
+		case arg == "views": s.views = true
 		case arg == "shot": s.shot = true
 		case arg == "immediate": s.immediate = true
 		case arg == "back": s.back = true
@@ -69,18 +78,22 @@ main :: proc() {
 			if ok do s.samples = value == 1 ? .One : value == 2 ? .Two : .Four
 		case len(arg) > 6 && arg[:6] == "count=":
 			value, ok := strconv.parse_int(arg[6:])
-			if ok && value > 0 do s.swarm_count = value
+			if ok && value > 0 {
+				s.swarm_count = value
+				count_requested = true
+			}
 		case: s.path = arg
 		}
 	}
+	if s.automatic && !count_requested do s.swarm_count = 4096
 	absolute, path_error := filepath.abs(s.path)
 	if path_error != nil do os.exit(1)
 	defer delete(absolute)
 	s.resources.Root = filepath.dir(absolute)
 	s.path = filepath.base(absolute)
 	app: foster.App
-	config := foster.DefaultAppConfig("Material3D | G: grouped/object passes | Space: outline | I: swarm | R: reload left | Esc: exit", 1100, 720)
-	if s.immediate do config.UpdateMode = foster.UnlockedStep() // 不限帧，配合 immediate 测真实 GPU 耗时
+	config := foster.DefaultAppConfig("Material3D | G: grouped/object passes | Space: outline | I: swarm | V: second view | R: reload left | Esc: exit", 1100, 720)
+	if s.immediate do config.UpdateMode = foster.UnlockedStep() // 不限帧；GPU 耗时需要单独的时间戳测量
 	foster.InitApp(&app, config)
 	foster.AppSetUserData(&app, s)
 	app.StartupProc, app.UpdateProc, app.RenderProc, app.ShutdownProc = startup, update, render, shutdown
@@ -126,6 +139,7 @@ startup :: proc(app: ^foster.App) {
 	}
 	if s.immediate { _ = SDL.SetGPUSwapchainParameters(device.Device, app.Window.Handle, .SDR, .IMMEDIATE) }
 	assert(r2d.init(&s.batch, &s.materials) == "")
+	assert(r3d.init(&s.renderer, &s.materials) == "")
 	world.camera3d_init(&s.camera, 1100, 720)
 	world.camera3d_set_position(&s.camera, {0, 1.2, 6})
 	if s.swarm_on {
@@ -140,11 +154,11 @@ startup :: proc(app: ^foster.App) {
 update :: proc(app: ^foster.App) {
 	s := foster.AppGetUserDataAs(app, State)
 	s.time += f32(app.Time.Delta)
-	if s.shot && s.frame > 10 do s.delta_sum += f64(app.Time.Delta)
 	keys := &app.Input.State.Keyboard
 	if foster.KeyboardPressed(keys, .Escape) do foster.Exit(app)
 	if foster.KeyboardPressed(keys, .Space) do s.outline = !s.outline
 	if foster.KeyboardPressed(keys, .G) do s.grouped = !s.grouped
+	if foster.KeyboardPressed(keys, .V) do s.views = !s.views
 	if foster.KeyboardPressed(keys, .I) {
 		s.swarm_on = !s.swarm_on
 		if s.swarm_on && !s.swarm.ready {
@@ -156,6 +170,7 @@ update :: proc(app: ^foster.App) {
 		}
 	}
 	if foster.KeyboardPressed(keys, .R) {
+		r3d.clear(&s.renderer) // 重载前释放对材质资源的借用
 		if reason := mat.material_reload(&s.materials, s.materials_shown[0]); reason != "" {
 			fmt.eprintln(reason)
 		}
@@ -166,61 +181,123 @@ render :: proc(app: ^foster.App) {
 	s := foster.AppGetUserDataAs(app, State)
 	if s.failed do return
 	start := time.tick_now()
-	defer if s.shot && s.frame > 10 do s.cpu_sum += time.duration_seconds(time.tick_diff(start, time.tick_now()))
 	device := &app.GraphicsDevice
 	window := foster.DrawableTargetFromWindow(&app.Window)
 	w, h := window.WidthInPixels, window.HeightInPixels
 	if s.target.Width != w || s.target.Height != h {
 		foster.TargetDispose(&s.target)
-		foster.TargetInit(&s.target, device, w, h, []foster.TargetAttachmentSpec{{.Color, s.samples}, {.Depth32, s.samples}}, "model material")
+		foster.TargetInit(&s.target, device, w, h,
+			[]foster.TargetAttachmentSpec{{.Color, s.samples}, {.Depth32, s.samples}}, "model material")
 	}
 	target := foster.DrawableTargetFromTarget(&s.target)
 	colors := [1]foster.Color{{31,38,51,255}}
 	foster.GraphicsDeviceClear(device, target, colors[:], 1, 0, foster.ClearMask.Color | foster.ClearMask.Depth)
 	world.camera3d_set_viewport(&s.camera, w, h)
-	view := r3d.View{target = target, view_projection = world.camera3d_view_projection(&s.camera),
-		time = s.time}
+	position := [3]f32{0, 1.2, 6}
 	if s.swarm_on {
-		// 100 万实例只有一次 Draw；相机退到能看到整块阵列的位置。
-		world.camera3d_set_position(&s.camera, {0, 25, 85})
-		view.view_projection = world.camera3d_view_projection(&s.camera)
-		if error := r3d.model_draw_buffer(s.swarm.material, &s.swarm.mesh, &s.swarm.instances, s.swarm.count, view); error != .None {
-			fail(app, mat.draw_error_text(error))
-		}
-	} else {
-		world.camera3d_set_position(&s.camera, {0, 1.2, 6})
-		view.view_projection = world.camera3d_view_projection(&s.camera)
+		factor := max(0.04, math.ceil(math.pow(f32(s.swarm.count), 1.0/3.0)) / 100)
+		position = {0, 25*factor, 85*factor}
 	}
-	for material, i in s.materials_shown {
-		if s.swarm_on do break
-		transform := world.matrix4_translation(i == 0 ? -1.25 : 1.25, 0, 0)
-		pass_id := s.grouped || !s.outline ? mat.Pass_Id("body") : ""
-		error := r3d.model_draw(material, &s.mesh, transform, view, pass_id)
+	world.camera3d_set_position(&s.camera, position)
+	view := r3d.View{target = target, view_projection = world.camera3d_view_projection(&s.camera),
+		view_matrix = world.camera3d_view(&s.camera), time = s.shot ? 0.8 : s.time}
+	r3d.clear(&s.renderer)
+	s.draw_calls = 0
+	s.submitted_instances = 0
+	if s.swarm_on {
+		error: mat.Draw_Error
+		if s.automatic {
+			// model 与 models 共用同一 instanced 材质，也会合成一批。
+			values := mat.Instance_Values{count = 1, set = 1}
+			values.numbers[0] = s.swarm.values[0]
+			error = r3d.model(&s.renderer, &s.swarm.mesh, s.swarm.material,
+				s.swarm.items[0].world, &s.swarm.local_bounds, &values)
+			if error == .None {
+				error = r3d.models(&s.renderer, &s.swarm.mesh, s.swarm.material,
+					s.swarm.items[1:], &s.swarm.local_bounds, s.swarm.values[1:])
+			}
+		} else {
+			error = r3d.buffer(&s.renderer, &s.swarm.mesh, s.swarm.material,
+				&s.swarm.instances, s.swarm.count, &s.swarm.bounds)
+		}
 		if error != .None {
 			fail(app, mat.draw_error_text(error))
+			return
 		}
-	}
-	if s.grouped && s.outline && !s.swarm_on {
+	} else {
+		bounds := dasset.Dasset_Bounds{min = {-1.1, -1.1, -1.1}, max = {1.1, 1.1, 1.1}} // 含描边扩张
 		for material, i in s.materials_shown {
 			transform := world.matrix4_translation(i == 0 ? -1.25 : 1.25, 0, 0)
-			if error := r3d.model_draw(material, &s.mesh, transform, view, "outline"); error != .None {
+			if error := r3d.model(&s.renderer, &s.mesh, material, transform, &bounds); error != .None {
 				fail(app, mat.draw_error_text(error))
+				return
 			}
 		}
 	}
-	r2d.reset(&s.batch)
-	r2d.quad_texture(&s.batch, foster.TargetAttachment(&s.target), {0,0}, {f32(w),0}, {f32(w),f32(h)}, {0,f32(h)}, {0,0},{1,0},{1,1},{0,1}, foster.White)
+	if s.views && !s.swarm_on {
+		r3d.grid(&s.renderer, 4, 1, {0.6, 0.7, 0.8, 0.4})
+		if s.inset.Width != w/3 || s.inset.Height != h/3 {
+			foster.TargetDispose(&s.inset)
+			foster.TargetInit(&s.inset, device, w/3, h/3,
+				[]foster.TargetAttachmentSpec{{.Color, s.samples}, {.Depth32, s.samples}}, "second view")
+		}
+		secondary := s.camera
+		world.camera3d_set_viewport(&secondary, w/3, h/3)
+		world.camera3d_set_position(&secondary, {-3, 1.5, 3})
+		other := r3d.View{target = foster.DrawableTargetFromTarget(&s.inset),
+			view_projection = world.camera3d_view_projection(&secondary),
+			view_matrix = world.camera3d_view(&secondary), time = view.time, draw_debug = false}
+		foster.GraphicsDeviceClear(device, other.target, colors[:], 1, 0, foster.ClearMask.Color | foster.ClearMask.Depth)
+		// 同一份记录先提交不同相机的 body，再提交主视图的 body/outline。
+		if !submit_scene(app, other, "body") do return
+	}
+	pass_id := s.grouped || !s.outline || s.swarm_on ? mat.Pass_Id("body") : ""
+	view.draw_debug = !(s.grouped && s.outline && !s.swarm_on)
+	if !submit_scene(app, view, pass_id) do return
+	if s.grouped && s.outline && !s.swarm_on {
+		view.draw_debug = true
+		if !submit_scene(app, view, "outline") do return
+	}
+	// 合成在最终像素尺寸进行；截图包含最终合成结果。
+	if s.views && !s.swarm_on {
+		iw, ih := f32(s.inset.Width), f32(s.inset.Height)
+		r2d.quad_texture(&s.batch, foster.TargetAttachment(&s.inset),
+			{16,16}, {16+iw,16}, {16+iw,16+ih}, {16,16+ih},
+			{0,0}, {1,0}, {1,1}, {0,1}, foster.White)
+		r2d.submit(&s.batch, {target = target})
+	}
+	r2d.quad_texture(&s.batch, foster.TargetAttachment(&s.target),
+		{0,0}, {f32(w),0}, {f32(w),f32(h)}, {0,f32(h)}, {0,0},{1,0},{1,1},{0,1}, foster.White)
 	r2d.submit(&s.batch, {target = window})
+	if s.shot && s.frame >= 10 {
+		s.cpu_sum += time.duration_seconds(time.tick_diff(start, time.tick_now()))
+		s.delta_sum += f64(app.Time.Delta)
+		s.measured_frames += 1
+	}
 	if s.shot {
 		s.frame += 1
-		if s.frame == (s.swarm_on ? 130 : 12) {
-			if s.swarm_on {
-				fmt.printf("Average frame time: %.2f ms, render CPU: %.2f ms (%d frames)\n", s.delta_sum*1000/119, s.cpu_sum*1000/119, 119)
-			}
+		if s.frame == 130 {
+			n := f64(s.measured_frames)
+			fmt.printf("Model draws: %d, submitted instances (all passes): %d; frame %.3f ms, render CPU %.3f ms, submit CPU %.3f ms (%d frames); GPU not measured\n",
+				s.draw_calls, s.submitted_instances, s.delta_sum*1000/n, s.cpu_sum*1000/n, s.submit_sum*1000/n, s.measured_frames)
 			save_capture(s)
 			foster.Exit(app)
 		}
 	}
+}
+
+submit_scene :: proc(app: ^foster.App, view: r3d.View, pass_id: mat.Pass_Id) -> bool {
+	s := foster.AppGetUserDataAs(app, State)
+	start := time.tick_now()
+	error := r3d.submit(&s.renderer, view, pass_id)
+	if s.shot && s.frame >= 10 do s.submit_sum += time.duration_seconds(time.tick_diff(start, time.tick_now()))
+	if error != .None {
+		fail(app, mat.draw_error_text(error))
+		return false
+	}
+	s.draw_calls += s.renderer.draw_calls
+	s.submitted_instances += s.renderer.instances
+	return true
 }
 
 // 读回离屏目标并写到 library/screenshots（相对示例仓库根）。
@@ -237,17 +314,19 @@ save_capture :: proc(s: ^State) {
 	for &pixel, i in image.Pixels do pixel = {bytes[i*4], bytes[i*4+1], bytes[i*4+2], bytes[i*4+3]}
 	directory :: #directory + "../../library/screenshots"
 	_ = os.make_directory_all(directory)
-	name := s.swarm_on ? "material3d_swarm.png" : "material3d.png"
+	name := s.automatic ? "material3d_models.png" : s.swarm_on ? "material3d_swarm.png" : s.views ? "material3d_views.png" : "material3d.png"
 	fmt.println(name, foster.ImageWritePng(&image, fmt.tprintf("%s/%s", directory, name)))
 }
 
 shutdown :: proc(app: ^foster.App) {
 	s := foster.AppGetUserDataAs(app, State)
+	r3d.dispose(&s.renderer)
 	swarm_dispose(s)
 	r2d.dispose(&s.batch)
 	mat.material_library_dispose(&s.materials)
 	foster.MeshDispose(&s.mesh)
 	foster.TargetDispose(&s.target)
+	foster.TargetDispose(&s.inset)
 }
 
 sphere :: proc(rings := 48, segments := 64) -> dasset.Dasset_Primitive {

@@ -1,10 +1,11 @@
 package main
 
 // 大批量实例化：一个低模球体 + 一个 Model_Buffer，默认 100 万个实例，每个 Pass 只有 1 次 Draw。
-// 实例数据（世界矩阵、tint、hue）在加载时一次性上传，之后每帧零 CPU 开销；颜色动画在着色器里按 Clock 计算。
+// 实例数据（世界矩阵、tint、hue）在加载时一次性上传，之后每帧不再上传实例数据；颜色动画在着色器里按 Clock 计算。
 // 真实游戏做视锥/遮挡剔除时，把实例按空间分块放进多个 Model_Buffer，只画可见的块。
 import "core:math"
 
+import dasset "olib:core/dasset"
 import foster "olib:foster"
 import r3d "olib:kit/rendering/3d"
 import mat "olib:kit/rendering/material"
@@ -18,6 +19,9 @@ Swarm :: struct {
 	instances: r3d.Model_Buffer,
 	count: int,
 	ready: bool,
+	items: []r3d.Model_Item,
+	values: [][4]f32,
+	local_bounds, bounds: dasset.Dasset_Bounds,
 }
 
 // 整数哈希到 0..1，让摆放确定且可重复。
@@ -44,14 +48,14 @@ swarm_init :: proc(s: ^State, device: ^foster.GraphicsDevice, count: int) -> str
 	hue := mat.instance_slot(material, "hue")
 	if !hue.valid do return "Material has no hue Instance field"
 	// 缓冲的槽数（每个实例的 [Instance] 字段数）取自材质，平铺数组的步长也用它。
-	if !r3d.model_buffer_init(&swarm.instances, material, count, "swarm instances") {
-		return "Cannot create instance buffer"
+	if !s.automatic {
+		if reason := r3d.model_buffer_init(&swarm.instances, material, count, "swarm instances"); reason != "" do return reason
 	}
 	instances := make([]r3d.Model_Item, count)
-	defer delete(instances)
-	slots := swarm.instances.slots
+	defer if !s.automatic do delete(instances)
+	slots := mat.instance_slot_count(material)
 	values := make([][4]f32, count*slots) // 每个实例连续 slots 个 float4
-	defer delete(values)
+	defer if !s.automatic do delete(values)
 	side := int(math.ceil(math.pow(f32(count), 1.0/3.0)))
 	spacing :: f32(0.6)
 	for &instance, i in instances {
@@ -67,7 +71,15 @@ swarm_init :: proc(s: ^State, device: ^foster.GraphicsDevice, count: int) -> str
 		instance.tint = {0.75 + 0.25*jitter, 0.75 + 0.25*swarm_hash(u32(i)*3 + 1), 1, 1}
 		_ = mat.instance_array_set(values, slots, i, hue, {z/f32(side), 0, 0, 0}) // hue 沿 Z 轴渐变
 	}
-	if !r3d.model_buffer_upload(&swarm.instances, instances, 0, values) do return "Cannot upload instances"
+	extent := f32(side) * spacing * 0.5 + 0.3
+	swarm.local_bounds = {min = {-1, -1, -1}, max = {1, 1, 1}}
+	swarm.bounds = {min = {-extent, -extent, -extent}, max = {extent, extent, extent}}
+	if s.automatic {
+		swarm.items = instances
+		swarm.values = values
+	} else if !r3d.model_buffer_upload(&swarm.instances, instances, 0, values) {
+		return "Cannot upload instances"
+	}
 	swarm.count = count
 	swarm.ready = true
 	return ""
@@ -75,6 +87,8 @@ swarm_init :: proc(s: ^State, device: ^foster.GraphicsDevice, count: int) -> str
 
 swarm_dispose :: proc(s: ^State) {
 	if !s.swarm.ready do return
+	delete(s.swarm.items)
+	delete(s.swarm.values)
 	r3d.model_buffer_dispose(&s.swarm.instances)
 	foster.MeshDispose(&s.swarm.mesh)
 	s.swarm = {}
