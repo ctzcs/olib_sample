@@ -1,13 +1,13 @@
 # 热重载：最小示例
 
 窗口和图形设备一直开着，游戏代码放在 DLL 里；保存源码后后台自动编译，成功就替换游戏，
-方块的位置保留。只有三个文件：
+方块的位置和拖尾保留。只有三个文件：
 
 ```text
 src/hotreload/
   main.odin             宿主：窗口和输入，热重载只有 hot_init / hot_update / hot_render / hot_dispose
   contract/contract.odin  宿主和游戏共用的类型（输入、App 指针）
-  game/game.odin        游戏：State 和 reset / start / stop / update / render 五个函数
+  game/game.odin        游戏：State（含拖尾数组和 Batcher）和一张 Game_Hooks 回调表
 ```
 
 ## 运行
@@ -46,16 +46,19 @@ WASD 或方向键移动，Esc 退出。
 | `reload.hot_render` | Render | 转发游戏的 `render` |
 | `reload.hot_dispose` | Shutdown | 卸载游戏并等待编译任务结束 |
 
-**游戏**（`game/game.odin`）写一个纯数据的 `State` 和五个函数，库负责导出、保存和恢复：
+**游戏**（`game/game.odin`）写一个 `State` 和一张回调表 `Game_Hooks`，库负责导出和交接：
 
-| 函数 | 何时调用 |
+| 回调 | 何时调用 |
 | --- | --- |
-| `reset` | 第一次启动时给 `State` 填初值；热重载时不调用，状态由库恢复 |
-| `start` / `stop` | 每次加载 / 卸载新版本：创建 / 释放不属于状态的资源（这里是 Batcher，放在包级变量里） |
+| `reset` | 第一次启动时给 `State` 填初值；热重载时不调用，`State` 由旧版本交接 |
+| `start` / `stop` | 每次加载 / 卸载一个版本：创建 / 释放这个版本的资源（这里是 `State` 里的 Batcher） |
+| `drop` | 游戏真正结束时释放 `State` 拥有的堆数据（这里是拖尾数组） |
 | `update` / `render` | 每帧调用 |
 
-`State` 只放可以按字节复制的数据，保存/恢复就是一次字节复制，格式变化时提高 `state_version`。
-状态里有动态数组、字符串、指针，或需要自定义编译命令、迁移策略时，改用完整接口
+热重载时 `State` 整体交给新版本：`trail` 数组原样保留（新旧版本共用同一块堆内存），`batcher` 由新版本的
+`start` 重新创建，旧版本的 `stop` 释放旧的。所以 `State` 里可以放数组和 Batcher，但不要放字符串字面量、
+函数指针这类指向 DLL 自己数据的指针。改了 `State` 的字段布局会被拒绝（提高 `state_version` 后重开）；
+需要跨字段变化保留局面、自定义编译命令或迁移策略时，改用完整接口
 （`reload.init` / `watch_init` / `API`），见 [core/hotreload/README.md](../../../olib/core/hotreload/README.md)。
 
 ## 边界
