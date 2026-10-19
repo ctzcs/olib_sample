@@ -18,6 +18,12 @@ register_materials :: proc(library: ^mat.Material_Library) -> string {
 				dxil = #load("../shader_lab/shaders/Compiled/SpriteShadow_shadow.fragment.dxil"),
 				msl = #load("../shader_lab/shaders/Compiled/SpriteShadow_shadow.fragment.msl"),
 			},
+			// 缓冲变体顶点：常驻 Sprite_Buffer（swarm）用。
+			instanced_vertex = {
+				spv = #load("../shader_lab/shaders/Compiled/SpriteShadow_shadow.instanced.vertex.spv"),
+				dxil = #load("../shader_lab/shaders/Compiled/SpriteShadow_shadow.instanced.vertex.dxil"),
+				msl = #load("../shader_lab/shaders/Compiled/SpriteShadow_shadow.instanced.vertex.msl"),
+			},
 		},
 		{ // body
 			vertex = {
@@ -29,6 +35,12 @@ register_materials :: proc(library: ^mat.Material_Library) -> string {
 				spv = #load("../shader_lab/shaders/Compiled/SpriteShadow_body.fragment.spv"),
 				dxil = #load("../shader_lab/shaders/Compiled/SpriteShadow_body.fragment.dxil"),
 				msl = #load("../shader_lab/shaders/Compiled/SpriteShadow_body.fragment.msl"),
+			},
+			// 缓冲变体顶点：常驻 Sprite_Buffer（swarm）用。
+			instanced_vertex = {
+				spv = #load("../shader_lab/shaders/Compiled/SpriteShadow_body.instanced.vertex.spv"),
+				dxil = #load("../shader_lab/shaders/Compiled/SpriteShadow_body.instanced.vertex.dxil"),
+				msl = #load("../shader_lab/shaders/Compiled/SpriteShadow_body.instanced.vertex.msl"),
 			},
 		},
 	}

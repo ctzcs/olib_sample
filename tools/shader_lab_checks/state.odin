@@ -21,6 +21,7 @@ State :: struct {
 	feature_next: f64,
 	shot, smoke, color_smoke, color_test_blur, failed: bool,
 	capture_index, smoke_step, validated_serial: int,
+	material_step, material_live_frames: int, // shot 最后一步：2D 材质效果预览的等待帧数
 	target_release_serial: int,
 	parameter_source, binding_source, temp_root: string,
 	parameter_revision: u64,

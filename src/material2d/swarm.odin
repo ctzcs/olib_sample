@@ -23,8 +23,8 @@ swarm_init :: proc(s: ^State, count: int, width, height: f32) -> string {
 	opacity := mat.instance_slot(s.material, "opacity")
 	if !hue.valid || !opacity.valid do return "Material has no hue / opacity Instance fields"
 	// 缓冲的槽数（每个精灵的 [Instance] 字段数）取自材质，平铺数组的步长也用它。
-	if !r2d.sprite_buffer_init(&s.swarm.buffer, s.material, count, "swarm sprites") {
-		return "Cannot create sprite buffer"
+	if reason := r2d.sprite_buffer_init(&s.swarm.buffer, s.material, count, "swarm sprites"); reason != "" {
+		return reason
 	}
 	items := make([]r2d.Sprite_Item, count)
 	defer delete(items)

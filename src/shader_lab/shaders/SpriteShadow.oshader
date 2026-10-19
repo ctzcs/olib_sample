@@ -22,23 +22,23 @@ Shader "SpriteShadow"
 #define SPRITE_SHADOW 1
 #include "Palette.hlsli"
 
-// Instanced sprite: OlibInstanceInput（必须是第一个成员）携带变换、图集矩形、tint 与 [Instance] 字段，
-// Corner 是单位四边形的角点；olib_sprite_vertex 得到最终目标像素位置与 UV（含图集区域）。
+// 2D 精灵统一顶点接口：olib_sprite 给出目标像素位置、UV（含图集区域）与传给片元的 tint、[Instance] 字段。
+// 逐个绘制（Render2D）与常驻缓冲（r2d.buffer）由工具编译成两种变体，这里的代码不用区分。
 cbuffer ViewBlock : register(b0, space1) { float4x4 Projection; };
 cbuffer FrameBlock : register(b0, space3) {
     float4 Clock;
     float4 Pointer;
     float4 Tint;
 };
-struct Input { OlibInstanceInput Instance; float2 Corner : TEXCOORD0; };
+struct Input { OlibSpriteInput Sprite; };
 struct Output { float4 Position : SV_Position; float2 Uv : TEXCOORD0; OlibInstance Instance; };
 Output vertex_main(Input v)
 {
     Output o;
-    float2 position;
-    olib_sprite_vertex(v.Instance, v.Corner, position, o.Uv);
-    o.Position = mul(Projection, float4(position, 0, 1));
-    o.Instance = olib_instance_from(v.Instance);
+    OlibSprite s = olib_sprite(v.Sprite);
+    o.Position = mul(Projection, float4(s.position, 0, 1));
+    o.Uv = s.uv;
+    o.Instance = s.instance;
     // Shadow geometry shares the frame UV, so atlas neighbours cannot bleed in.
 #ifdef SPRITE_SHADOW
     o.Position.xy += float2(Projection[0][0], Projection[1][1]) * 12;
@@ -69,23 +69,23 @@ float4 fragment_main(Output v) : SV_Target0
         HLSLPROGRAM
 #include "Palette.hlsli"
 
-// Instanced sprite: OlibInstanceInput（必须是第一个成员）携带变换、图集矩形、tint 与 [Instance] 字段，
-// Corner 是单位四边形的角点；olib_sprite_vertex 得到最终目标像素位置与 UV（含图集区域）。
+// 2D 精灵统一顶点接口：olib_sprite 给出目标像素位置、UV（含图集区域）与传给片元的 tint、[Instance] 字段。
+// 逐个绘制（Render2D）与常驻缓冲（r2d.buffer）由工具编译成两种变体，这里的代码不用区分。
 cbuffer ViewBlock : register(b0, space1) { float4x4 Projection; };
 cbuffer FrameBlock : register(b0, space3) {
     float4 Clock;
     float4 Pointer;
     float4 Tint;
 };
-struct Input { OlibInstanceInput Instance; float2 Corner : TEXCOORD0; };
+struct Input { OlibSpriteInput Sprite; };
 struct Output { float4 Position : SV_Position; float2 Uv : TEXCOORD0; OlibInstance Instance; };
 Output vertex_main(Input v)
 {
     Output o;
-    float2 position;
-    olib_sprite_vertex(v.Instance, v.Corner, position, o.Uv);
-    o.Position = mul(Projection, float4(position, 0, 1));
-    o.Instance = olib_instance_from(v.Instance);
+    OlibSprite s = olib_sprite(v.Sprite);
+    o.Position = mul(Projection, float4(s.position, 0, 1));
+    o.Uv = s.uv;
+    o.Instance = s.instance;
     // Shadow geometry shares the frame UV, so atlas neighbours cannot bleed in.
 #ifdef SPRITE_SHADOW
     o.Position.xy += float2(Projection[0][0], Projection[1][1]) * 12;

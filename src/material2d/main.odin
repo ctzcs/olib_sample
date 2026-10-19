@@ -1,7 +1,8 @@
 package main
 
-// 先画所有阴影，再画所有本体；空格切换逐对象绘制，控制台报告真实 Draw 次数。
-// 12 个精灵共用一个 Material；右侧一组用 Instance_Values 把 hue 设为 0.7，仍合成同一次 Draw。
+// 12 个精灵共用一个两 Pass 材质（阴影 + 本体）；Render2D 提交时对同一材质的连续一段先画完全部阴影、再画全部本体。
+// 空格切换为用 pass_id 手动分两轮记录，结果相同。控制台报告真实 Draw 次数。
+// 右侧一组用 Instance_Values 把 hue 设为 0.7，值走 storage buffer，仍合成同一次 Draw。
 import "core:fmt"
 import "core:math"
 import "core:os"
@@ -15,7 +16,7 @@ import mat "olib:kit/rendering/material"
 State :: struct {
 	resources: foster.StorageContainer,
 	materials: mat.Material_Library,
-	renderer: r2d.Sprite_Renderer,
+	renderer: r2d.Render2D,
 	material: ^mat.Material, // 12 个精灵共用一个材质、一张图
 	cool: mat.Instance_Values, // 右侧一组的实例字段：只改 hue，不创建新的 Material
 	shot: bool, // 参数 shot：离屏渲染固定时间的画面，写 PNG 后退出（验收用）
@@ -44,6 +45,7 @@ main :: proc() {
 		switch {
 		case arg == "swarm": s.swarm_on = true
 		case arg == "immediate": s.immediate = true
+		case arg == "auto": s.grouped = false // 不用 pass_id，由 Render2D 按 Pass 自动分组（与空格切换相同）
 		case len(arg) > 6 && arg[:6] == "count=":
 			value, ok := strconv.parse_int(arg[6:])
 			if ok && value > 0 do s.swarm_count = value
@@ -74,7 +76,10 @@ startup :: proc(app: ^foster.App) {
 		return
 	}
 	if s.immediate { _ = SDL.SetGPUSwapchainParameters(app.GraphicsDevice.Device, app.Window.Handle, .SDR, .IMMEDIATE) }
-	r2d.sprite_renderer_init(&s.renderer, &app.GraphicsDevice)
+	if reason := r2d.init(&s.renderer, &s.materials); reason != "" {
+		fail(app, reason)
+		return
+	}
 	image := foster.ImageMake(256, 256)
 	defer foster.ImageDispose(&image)
 	for y in 0..<256 {
@@ -132,7 +137,7 @@ render :: proc(app: ^foster.App) {
 	defer if s.shot && s.frame > 10 do s.cpu_sum += time.duration_seconds(time.tick_diff(start, time.tick_now()))
 	target := s.shot ? foster.DrawableTargetFromTarget(&s.capture) : foster.DrawableTargetFromWindow(&app.Window)
 	foster.GraphicsDeviceClear(&app.GraphicsDevice, target, foster.Color{31, 38, 51, 255})
-	view := r2d.Sprite_View{target = target, time = s.time}
+	view := r2d.View{target = target, time = s.time}
 	if s.swarm_on {
 		if !s.swarm.ready {
 			if reason := swarm_init(s, s.swarm_count, f32(target.WidthInPixels), f32(target.HeightInPixels)); reason != "" {
@@ -141,10 +146,10 @@ render :: proc(app: ^foster.App) {
 			}
 			fmt.printf("Swarm: %d sprites, 1 draw\n", s.swarm.count)
 		}
-		if error := r2d.sprite_draw_buffer(&s.renderer, s.material, &s.swarm.buffer, s.swarm.count,
-			&s.texture, view, "body"); error != .None {
+		if error := r2d.buffer(&s.renderer, s.material, &s.swarm.buffer, s.swarm.count, &s.texture, "body"); error != .None {
 			fail(app, mat.draw_error_text(error))
 		}
+		if error := r2d.submit(&s.renderer, view); error != .None do fail(app, mat.draw_error_text(error))
 		finish_shot(s, app)
 		return
 	}
@@ -155,31 +160,29 @@ render :: proc(app: ^foster.App) {
 		transform = {0.75, 0, 0, 0.75, x, y}
 	}
 	frame := foster.SubtextureFromTexture(&s.texture)
-	if !r2d.sprite_begin(&s.renderer) {
-		fail(app, "Cannot begin sprite rendering")
-		return
-	}
+	// 精灵按 0.75 缩放：帧贴图用线性采样（Render2D 与 foster Batcher 一样默认最近邻）。
+	r2d.push_sampler(&s.renderer, foster.TextureSamplerMake(.Linear, .Clamp))
 	if s.grouped {
-		// 顺序由使用者选择；Renderer 只合并相邻兼容绘制。
+		// 手动分两轮：先用 pass_id 记录全部阴影，再记录全部本体。
 		for i in 0..<SPRITE_COUNT {
-			error := r2d.sprite_draw(&s.renderer, s.material, frame, transforms[i], view,
-				origin = {128, 128}, values = sprite_values(s, i), pass_id = "shadow")
+			error := r2d.image(&s.renderer, frame, transforms[i], origin = {128, 128}, material = s.material,
+				values = sprite_values(s, i), pass_id = "shadow")
 			if error != .None do fail(app, mat.draw_error_text(error))
 		}
 	}
 	for i in 0..<SPRITE_COUNT {
 		pass_id := s.grouped ? mat.Pass_Id("body") : ""
-		error := r2d.sprite_draw(&s.renderer, s.material, frame, transforms[i], view,
-			origin = {128, 128}, values = sprite_values(s, i), pass_id = pass_id)
+		error := r2d.image(&s.renderer, frame, transforms[i], origin = {128, 128}, material = s.material,
+			values = sprite_values(s, i), pass_id = pass_id)
 		if error != .None {
 			fail(app, mat.draw_error_text(error))
 		}
 	}
-	r2d.sprite_end(&s.renderer)
+	if error := r2d.submit(&s.renderer, view); error != .None do fail(app, mat.draw_error_text(error))
 	if !s.reported || s.last_grouped != s.grouped || s.last_draw_calls != s.renderer.draw_calls {
-		fmt.printf("%s: %d sprite passes -> %d draws\n",
-			s.grouped ? "All shadows, then all bodies" : "All passes per object",
-			s.renderer.sprite_passes, s.renderer.draw_calls)
+		fmt.printf("%s: %d sprites x 2 passes -> %d draws\n",
+			s.grouped ? "Recorded with pass_id" : "All passes, grouped by Render2D",
+			SPRITE_COUNT, s.renderer.draw_calls)
 		s.reported = true
 		s.last_grouped = s.grouped
 		s.last_draw_calls = s.renderer.draw_calls
@@ -223,7 +226,7 @@ shutdown :: proc(app: ^foster.App) {
 	s := foster.AppGetUserDataAs(app, State)
 	swarm_dispose(s)
 	if s.shot do foster.TargetDispose(&s.capture)
+	r2d.dispose(&s.renderer)
 	mat.material_library_dispose(&s.materials)
-	r2d.sprite_renderer_dispose(&s.renderer)
 	foster.TextureDispose(&s.texture)
 }

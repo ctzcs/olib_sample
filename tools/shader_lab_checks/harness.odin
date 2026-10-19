@@ -16,7 +16,10 @@ prepare_smoke :: proc(s: ^State) -> bool {
 		return false
 	}
 	s.temp_root = root
-	for name in ([]string{"Preview2D.oshader", "Preview3D.oshader", "Palette.hlsli"}) {
+	// 纯 shot 额外带上 2D 材质效果，最后一步截它的材质预览；其他验证模式保持原来的两组 Shader。
+	names := s.shot && !s.smoke ? []string{"Preview2D.oshader", "Preview3D.oshader", "Palette.hlsli", "SpriteShadow.oshader"} :
+		[]string{"Preview2D.oshader", "Preview3D.oshader", "Palette.hlsli"}
+	for name in names {
 		bytes, err := os.read_entire_file(fmt.tprintf("%s/%s", s.source_root, name), context.temp_allocator)
 		if err != nil || os.write_entire_file(fmt.tprintf("%s/%s", root, name), bytes) != nil do return false
 	}
@@ -26,7 +29,7 @@ prepare_smoke :: proc(s: ^State) -> bool {
 
 cleanup_smoke :: proc(s: ^State) {
 	if s.temp_root == "" || s.failed do return
-	for name in ([]string{"Preview2D.oshader", "Preview3D.oshader", "Trail2D.oshader", "Trail3D.oshader", "Palette.hlsli", "Extra.oshader", "red.png", "feature-preset.json", "feature-bad.json", "feature.png"}) {
+	for name in ([]string{"Preview2D.oshader", "Preview3D.oshader", "Trail2D.oshader", "Trail3D.oshader", "Palette.hlsli", "SpriteShadow.oshader", "Extra.oshader", "red.png", "feature-preset.json", "feature-bad.json", "feature.png"}) {
 		_ = os.remove(fmt.tprintf("%s/%s", s.temp_root, name))
 	}
 	_ = os.remove(s.temp_root)
@@ -113,6 +116,11 @@ validate_frame :: proc(s: ^State, app: ^foster.App) {
 		validate_color_frame(s, app)
 		return
 	}
+	if s.material_step > 0 {
+		// shot 最后一步进行中：只等材质预览，不再走前面的模式截图。
+		if shot_material_sprite(s) do foster.Exit(app)
+		return
+	}
 	if s.smoke_step == 0 {
 		if s.shader_count < 2 || s.pending_bank != nil || s.selected_effect < 0 || !s.effects[s.selected_effect].ready do return
 		// 每个模式连续两帧，确保录下的确实是切换后的实际绘制。
@@ -126,7 +134,7 @@ validate_frame :: proc(s: ^State, app: ^foster.App) {
 		s.capture_index += 1
 		if s.capture_index < 8 do return
 		if !s.smoke {
-			foster.Exit(app)
+			if shot_material_sprite(s) do foster.Exit(app)
 			return
 		}
 		s.initial_pixels = scene_hash(s)
@@ -318,4 +326,34 @@ widget_present :: proc(s: ^State, id: string) -> bool {
 		if widget.id == key do return true
 	}
 	return false
+}
+
+// shot 的最后一步：切到 2D 材质效果 SpriteShadow（两个 Pass、带 [Instance] 字段），等它的 Shader 编译生效后截图，
+// 确认材质预览（r2d.material_draw，字段走顶点 storage buffer）能编译、绑定并画出。返回 true 表示完成。
+shot_material_sprite :: proc(s: ^State) -> bool {
+	if s.material_step == 0 {
+		index := -1
+		for e, i in s.effects {
+			if e.desc.name == "SpriteShadow" do index = i
+		}
+		check(s, index >= 0, "SpriteShadow effect exists")
+		if index < 0 do return true
+		lab.select_effect(s.tool, index)
+	}
+	s.material_step += 1
+	settled := true
+	for p, i in s.parameters[:s.shader_count] {
+		if !strings.has_prefix(p.name, "SpriteShadow_") do continue
+		status := s.shaders[i].status
+		settled = settled && (status == .Live || status == .Error)
+		check(s, status != .Error, fmt.tprintf("%s compiles: %s", p.name, s.shaders[i].diagnostic))
+	}
+	if !settled && s.material_step < 600 do return false
+	check(s, settled, "SpriteShadow shaders become live")
+	// 生效后的下一帧才画进预览目标，多等几帧再读回。
+	s.material_live_frames += 1
+	if settled && s.material_live_frames < 4 do return false
+	check(s, s.bank_error == "", fmt.tprintf("material preview binds: %s", s.bank_error))
+	capture(s, "material-sprite")
+	return true
 }
