@@ -167,8 +167,8 @@ run.bat forward3d shot
 run.bat hotreload
 ```
 
-`hotreload` is the minimal wiring: a persistent window (`main.odin`, about 120 lines) and a game DLL
-(`game/game.odin`, about 90 lines) that moves a square with WASD/arrows. While it runs, change `SPEED`,
+`hotreload` is the minimal wiring: a persistent window (`main.odin`, about 90 lines including window boilerplate) and a game DLL
+(`game/game.odin`, about 50 lines) that moves a square with WASD/arrows. While it runs, change `SPEED`,
 `SIZE` or `COLOR` in `game/game.odin` and save: the next build replaces the game and the square keeps
 its position. A failed build keeps the previous version and prints the compiler output; fix and save to recover.
 See [the walkthrough](src/hotreload/README.md). For a real project start from `tools/new-game`.

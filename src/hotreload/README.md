@@ -5,9 +5,9 @@
 
 ```text
 src/hotreload/
-  main.odin             宿主：窗口、编译监听、每帧替换检查、转发输入
+  main.odin             宿主：窗口和输入，热重载只有 hot_init / hot_update / hot_render / hot_dispose
   contract/contract.odin  宿主和游戏共用的类型（输入、App 指针）
-  game/game.odin        游戏：状态、更新、绘制、保存/恢复状态
+  game/game.odin        游戏：State 和 reset / start / stop / update / render 五个函数
 ```
 
 ## 运行
@@ -37,24 +37,26 @@ WASD 或方向键移动，Esc 退出。
 
 ## 它是怎么工作的
 
-**宿主**（`main.odin`）常驻，创建 `Session`（管理当前 DLL）和 `Watch`（监听源码并后台编译）：
+**宿主**（`main.odin`）只管窗口和输入，热重载交给库里的 `Hot`，四个调用：
 
-- `reload.init` / `reload.watch_init`：启动时各调用一次，`Watch` 的参数就是一条 `odin build ... -build-mode:dll` 命令。
-- `update` 里 `reload.watch_update`，状态变成 `.Ready` 就等 GPU 空闲后 `reload.watch_apply` 替换；失败则保留旧版。
-- 每帧把输入写进 `Services`，调用 `reload.update` / `reload.render`，它们转发到当前 DLL 的同名函数。
-- 退出时先 `reload.dispose`（卸载游戏），再 `reload.watch_dispose`。
+| 调用 | 位置 | 作用 |
+| --- | --- | --- |
+| `reload.hot_init` | Startup | 给出游戏包目录、`-collection` 和宿主服务，库在后台编译并监听源码 |
+| `reload.hot_update` | 每帧 Update 开头 | 检查编译结果；新版本编好就（先等 GPU 空闲）替换，失败则保留旧版；再转发游戏的 `update` |
+| `reload.hot_render` | Render | 转发游戏的 `render` |
+| `reload.hot_dispose` | Shutdown | 卸载游戏并等待编译任务结束 |
 
-**游戏**（`game/game.odin`）导出一个 `olib_game_api`，提供六个回调：
+**游戏**（`game/game.odin`）写一个纯数据的 `State` 和五个函数，库负责导出、保存和恢复：
 
-| 回调 | 作用 |
+| 函数 | 何时调用 |
 | --- | --- |
-| `load` | 创建私有对象；`snapshot.version == 0` 是第一次启动，否则从快照恢复上一版的状态 |
-| `unload` | 释放私有对象（这里是 Batcher） |
-| `snapshot_size` / `save` | 把状态按字节交给宿主，下一版 `load` 时恢复 |
-| `update` / `render` | 每帧更新和绘制 |
+| `reset` | 第一次启动时给 `State` 填初值；热重载时不调用，状态由库恢复 |
+| `start` / `stop` | 每次加载 / 卸载新版本：创建 / 释放不属于状态的资源（这里是 Batcher，放在包级变量里） |
+| `update` / `render` | 每帧调用 |
 
-状态 `State` 只放可以按字节复制的数据，所以保存/恢复就是一次 `mem.copy`。以后状态里有动态数组、字符串时，
-改成 JSON 或自己的编码，并在格式变化时提高 `state_version`。
+`State` 只放可以按字节复制的数据，保存/恢复就是一次字节复制，格式变化时提高 `state_version`。
+状态里有动态数组、字符串、指针，或需要自定义编译命令、迁移策略时，改用完整接口
+（`reload.init` / `watch_init` / `API`），见 [core/hotreload/README.md](../../../olib/core/hotreload/README.md)。
 
 ## 边界
 

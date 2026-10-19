@@ -1,8 +1,6 @@
 // 游戏模块：编译成 DLL，保存本文件后由宿主自动替换。方块的位置在替换时保留。
 package game
 
-import "core:mem"
-
 import reload "olib:core/hotreload"
 import foster "olib:foster"
 
@@ -13,78 +11,42 @@ SPEED :: f32(240)
 SIZE :: f32(64)
 COLOR :: foster.Color{100, 229, 185, 255}
 
-// 状态：只放可以按字节复制的数据（没有指针、切片、字符串），热重载时直接按字节保存和恢复。
+// 状态：只放可以按字节复制的数据（没有指针、切片、字符串），热重载时库自动保存和恢复。
 State :: struct {
 	position: [2]f32,
 }
 
-// 模块私有对象。GPU 对象（Batcher）每个版本自己创建、自己释放，不跨版本保留。
-Instance :: struct {
-	state: State,
-	batcher: foster.Batcher,
-	ready: bool,
-}
+// 不属于状态的资源放包级变量：每个版本的 DLL 有自己的一份，卸载时随之释放。
+batcher: foster.Batcher
 
-// 宿主通过这个导出函数认出模块；照抄即可，只需要改 state_version（状态格式变了就加一）。
+// 照抄即可：告诉库这个模块的状态类型和各个回调。
 @(export)
 olib_game_api :: proc "c" (version: u32, size: int, api: ^reload.API) -> bool {
-	if version != reload.API_VERSION || size != size_of(reload.API) do return false
-	api^ = {
-		host_version = contract.HOST_VERSION, state_version = 1,
-		load = load, unload = unload, snapshot_size = snapshot_size, save = save,
-		update = update, render = render,
-	}
-	return true
+	return reload.simple_api(version, size, api, State, contract.Services,
+		reset, start, stop, update, render, host_version = contract.HOST_VERSION)
 }
 
-// snapshot.version == 0 是第一次启动；否则恢复上一版保存的状态。失败也会调用 unload。
-load :: proc "c" (call: ^reload.Call, snapshot: reload.Snapshot) -> bool {
-	context = call.host_context^
-	s := new(Instance)
-	call.instance = s
-	if snapshot.version == 0 {
-		s.state.position = {200, 200}
-	} else {
-		if len(snapshot.data) != size_of(State) do return false
-		mem.copy(&s.state, raw_data(snapshot.data), size_of(State))
-	}
-	host := cast(^contract.Services)call.services
-	foster.BatcherInit(&s.batcher, &host.app.GraphicsDevice, "hotreload sample")
-	s.ready = true
-	return true
+// 第一次启动时调用一次（热重载时不调用，状态由库恢复）。
+reset :: proc(state: ^State, host: ^contract.Services) {
+	state.position = {200, 200}
 }
 
-unload :: proc "c" (call: ^reload.Call) {
-	context = call.host_context^
-	s := cast(^Instance)call.instance
-	if s == nil do return
-	if s.ready do foster.BatcherDispose(&s.batcher)
-	free(s)
+// 每次加载新版本时调用：创建资源。
+start :: proc(state: ^State, host: ^contract.Services) {
+	foster.BatcherInit(&batcher, &host.app.GraphicsDevice, "hotreload sample")
 }
 
-// 保存状态：先报告长度，再写入宿主给的缓冲。
-snapshot_size :: proc "c" (call: ^reload.Call) -> int {
-	return size_of(State)
+// 每次卸载旧版本时调用：释放资源。
+stop :: proc(state: ^State, host: ^contract.Services) {
+	foster.BatcherDispose(&batcher)
 }
 
-save :: proc "c" (call: ^reload.Call, destination: []u8) -> bool {
-	s := cast(^Instance)call.instance
-	if len(destination) != size_of(State) do return false
-	mem.copy(raw_data(destination), &s.state, size_of(State))
-	return true
+update :: proc(state: ^State, host: ^contract.Services, dt: f64) {
+	state.position += host.move * SPEED * f32(dt)
 }
 
-update :: proc "c" (call: ^reload.Call, dt: f64) {
-	s := cast(^Instance)call.instance
-	host := cast(^contract.Services)call.services
-	s.state.position += host.move * SPEED * f32(dt)
-}
-
-render :: proc "c" (call: ^reload.Call, dt: f64) {
-	context = call.host_context^
-	s := cast(^Instance)call.instance
-	host := cast(^contract.Services)call.services
-	foster.BatcherClear(&s.batcher)
-	foster.BatcherRect(&s.batcher, foster.Rect{s.state.position.x, s.state.position.y, SIZE, SIZE}, COLOR)
-	foster.BatcherRender(&s.batcher, foster.DrawableTargetFromWindow(&host.app.Window))
+render :: proc(state: ^State, host: ^contract.Services, dt: f64) {
+	foster.BatcherClear(&batcher)
+	foster.BatcherRect(&batcher, foster.Rect{state.position.x, state.position.y, SIZE, SIZE}, COLOR)
+	foster.BatcherRender(&batcher, foster.DrawableTargetFromWindow(&host.app.Window))
 }
