@@ -6,6 +6,8 @@ import "core:os"
 import tween "olib:core/tween"
 import foster "olib:foster"
 import appkit "olib:kit/app"
+import r2d "olib:kit/rendering/2d"
+import mat "olib:kit/rendering/material"
 import ui "olib:kit/ui"
 import clay "olib:thirdparty/clay-odin"
 
@@ -16,7 +18,8 @@ import fonts "../../shared/msdf_font"
 Demo :: struct {
 	ctx: ui.UI_Context,
 	theme: ui.UI_Theme,
-	batch: foster.Batcher,
+	materials: mat.Material_Library,
+	batch: r2d.Render2D,
 	font: foster.MsdfFont,
 	font_texture, icons: foster.Texture,
 	target: foster.Target,
@@ -91,7 +94,11 @@ startup :: proc(g: ^foster.App) {
 		tile.visual = ui.UI_VISUAL_DEFAULT
 	}
 	s.modal.visual = ui.UI_VISUAL_DEFAULT
-	foster.BatcherInit(&s.batch, &g.GraphicsDevice)
+	s.materials = {device = &g.GraphicsDevice}
+	if reason := r2d.init(&s.batch, &s.materials); reason != "" {
+		fmt.eprintln(reason)
+		os.exit(1)
+	}
 	s.icons = make_icons(&g.GraphicsDevice)
 }
 
@@ -100,7 +107,8 @@ shutdown :: proc(g: ^foster.App) {
 	// 先取消指针绑定的 Tween，再释放 UI 和持有状态。
 	tween.manager_delete(&s.tweens)
 	ui.ui_dispose(&s.ctx)
-	foster.BatcherDispose(&s.batch)
+	r2d.dispose(&s.batch)
+	mat.material_library_dispose(&s.materials)
 	foster.TargetDispose(&s.target)
 	foster.TextureDispose(&s.icons)
 	foster.TextureDispose(&s.font_texture)
@@ -155,14 +163,15 @@ render :: proc(g: ^foster.App) {
 	ui.ui_set_modal(&s.ctx, s.modal_open ? "reward-modal" : "")
 	ui.ui_begin(&s.ctx, s.dt)
 	declare_ui(s)
-	foster.BatcherClear(&s.batch)
-	ui.ui_draw(&s.ctx, &s.batch)
 	window := foster.DrawableTargetFromWindow(&g.Window)
 	final := foster.DrawableTargetFromTarget(&s.target)
 	foster.GraphicsDeviceClear(&g.GraphicsDevice, window, INK)
 	foster.GraphicsDeviceClear(&g.GraphicsDevice, final, INK)
-	foster.BatcherRender(&s.batch, window)
-	foster.BatcherRender(&s.batch, final)
+	// submit 会清空记录：画到第二个目标时用同一批 UI 操作再记录一次。
+	ui.ui_draw(&s.ctx, &s.batch)
+	r2d.submit(&s.batch, {target = window})
+	ui.ui_render(&s.ctx, &s.batch, &s.ctx.ops)
+	r2d.submit(&s.batch, {target = final})
 	if s.shot {
 		assert(s.ctx.error_count == 0 && !s.ctx.pool_overflow, "UI diagnostics")
 		if s.frame == 3 || s.frame == 13 || s.frame == 46 || s.frame == 74 || s.frame == 90 || s.frame == 153 || s.frame == 205 {

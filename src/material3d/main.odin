@@ -10,6 +10,7 @@ import "core:time"
 import SDL "vendor:sdl3"
 import dasset "olib:core/dasset"
 import foster "olib:foster"
+import r2d "olib:kit/rendering/2d"
 import r3d "olib:kit/rendering/3d"
 import mat "olib:kit/rendering/material"
 import world "olib:kit/world"
@@ -20,7 +21,7 @@ State :: struct {
 	materials_shown: [2]^mat.Material, // 同一网格、同一材质文件的两份实例：右边改了 hue
 	mesh: foster.Mesh,
 	target: foster.Target,
-	batch: foster.Batcher,
+	batch: r2d.Render2D,
 	camera: world.Camera3D,
 	time: f32,
 	outline: bool,
@@ -124,7 +125,7 @@ startup :: proc(app: ^foster.App) {
 		return
 	}
 	if s.immediate { _ = SDL.SetGPUSwapchainParameters(device.Device, app.Window.Handle, .SDR, .IMMEDIATE) }
-	foster.BatcherInit(&s.batch, device)
+	assert(r2d.init(&s.batch, &s.materials) == "")
 	world.camera3d_init(&s.camera, 1100, 720)
 	world.camera3d_set_position(&s.camera, {0, 1.2, 6})
 	if s.swarm_on {
@@ -207,9 +208,9 @@ render :: proc(app: ^foster.App) {
 			}
 		}
 	}
-	foster.BatcherClear(&s.batch)
-	foster.BatcherQuadTexture(&s.batch, foster.TargetAttachment(&s.target), {0,0}, {f32(w),0}, {f32(w),f32(h)}, {0,f32(h)}, {0,0},{1,0},{1,1},{0,1}, foster.White)
-	foster.BatcherRender(&s.batch, window)
+	r2d.reset(&s.batch)
+	r2d.quad_texture(&s.batch, foster.TargetAttachment(&s.target), {0,0}, {f32(w),0}, {f32(w),f32(h)}, {0,f32(h)}, {0,0},{1,0},{1,1},{0,1}, foster.White)
+	r2d.submit(&s.batch, {target = window})
 	if s.shot {
 		s.frame += 1
 		if s.frame == (s.swarm_on ? 130 : 12) {
@@ -243,10 +244,10 @@ save_capture :: proc(s: ^State) {
 shutdown :: proc(app: ^foster.App) {
 	s := foster.AppGetUserDataAs(app, State)
 	swarm_dispose(s)
+	r2d.dispose(&s.batch)
 	mat.material_library_dispose(&s.materials)
 	foster.MeshDispose(&s.mesh)
 	foster.TargetDispose(&s.target)
-	foster.BatcherDispose(&s.batch)
 }
 
 sphere :: proc(rings := 48, segments := 64) -> dasset.Dasset_Primitive {

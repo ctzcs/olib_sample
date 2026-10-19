@@ -19,6 +19,8 @@ import app "olib:kit/app"
 import r3d "olib:kit/rendering/3d"
 import world "olib:kit/world"
 import foster "olib:foster"
+import mat "olib:kit/rendering/material"
+import r2d "olib:kit/rendering/2d"
 
 // 分区：
 //   状态 —— 窗口 / 场景对象 / 渲染资源
@@ -56,7 +58,8 @@ queue: r3d.Render_Queue(Standard_Draw)
 camera: world.Camera3D
 objects: [Shape]Scene_Object
 scene_target: foster.Target // 颜色 + 深度；3D 先画在这里，再合成到窗口
-compose: foster.Batcher
+compose: r2d.Render2D
+compose_materials: mat.Material_Library
 scene_time: f32
 frame: int
 shot: bool
@@ -85,7 +88,8 @@ startup :: proc(g: ^foster.App) {
 	}
 	fmt.println("forward3d: driver", device.Driver)
 	r3d.debug_draw_init(&debug, device)
-	foster.BatcherInit(&compose, device, "forward3d compose")
+	compose_materials = {device = device}
+	assert(r2d.init(&compose, &compose_materials) == "")
 	attachments := [2]foster.TargetAttachmentSpec{{Format = .Color}, {Format = .Depth32}}
 	foster.TargetInit(&scene_target, device, VIEW_W, VIEW_H, attachments[:], "forward3d color + depth")
 
@@ -108,7 +112,8 @@ shutdown :: proc(g: ^foster.App) {
 	r3d.queue_dispose(&queue)
 	r3d.debug_draw_dispose(&debug)
 	foster.TargetDispose(&scene_target)
-	foster.BatcherDispose(&compose)
+	r2d.dispose(&compose)
+	mat.material_library_dispose(&compose_materials)
 	renderer_dispose(&renderer)
 }
 
@@ -190,18 +195,18 @@ render :: proc(g: ^foster.App) {
 	fit := min(w / VIEW_W, h / VIEW_H)
 	x0, y0 := (w - VIEW_W * fit) * 0.5, (h - VIEW_H * fit) * 0.5
 	x1, y1 := x0 + VIEW_W * fit, y0 + VIEW_H * fit
-	foster.BatcherClear(&compose)
-	foster.BatcherPushSampler(&compose, foster.TextureSamplerMake(.Linear, .Clamp))
-	foster.BatcherQuadTexture(
+	r2d.reset(&compose)
+	r2d.push_sampler(&compose, foster.TextureSamplerMake(.Linear, .Clamp))
+	r2d.quad_texture(
 		&compose,
 		foster.TargetAttachment(&scene_target),
 		{x0, y0}, {x1, y0}, {x1, y1}, {x0, y1},
 		{0, 0}, {1, 0}, {1, 1}, {0, 1},
 		foster.White,
 	)
-	foster.BatcherPopSampler(&compose)
+	r2d.pop_sampler(&compose)
 	foster.GraphicsDeviceClear(device, window, {0, 0, 0, 255})
-	foster.BatcherRender(&compose, window)
+	r2d.submit(&compose, {target = window})
 
 	frame += 1
 	if shot && frame >= SHOT_FRAME {

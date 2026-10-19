@@ -4,6 +4,8 @@ import "core:fmt"
 import "core:os"
 
 import app "olib:kit/app"
+import r2d "olib:kit/rendering/2d"
+import mat "olib:kit/rendering/material"
 import ui "olib:kit/ui"
 import foster "olib:foster"
 import clay "olib:thirdparty/clay-odin"
@@ -12,7 +14,8 @@ import clay "olib:thirdparty/clay-odin"
 game: foster.App
 ctx: ui.UI_Context
 theme: ui.UI_Theme
-batcher: foster.Batcher
+materials: mat.Material_Library
+renderer: r2d.Render2D
 font: foster.MsdfFont
 font_texture, icons: foster.Texture
 font_path: string
@@ -53,7 +56,11 @@ startup :: proc(g: ^foster.App) {
 		return
 	}
 	theme = ui.UI_THEME_DARK
-	foster.BatcherInit(&batcher, &g.GraphicsDevice, "game UI")
+	materials = {device = &g.GraphicsDevice}
+	if reason := r2d.init(&renderer, &materials); reason != "" {
+		fmt.eprintln(reason)
+		os.exit(1)
+	}
 	image := foster.ImageMake(64, 32)
 	defer foster.ImageDispose(&image)
 	for y in 0..<32 {
@@ -73,7 +80,8 @@ startup :: proc(g: ^foster.App) {
 }
 
 shutdown :: proc(g: ^foster.App) {
-	foster.BatcherDispose(&batcher)
+	r2d.dispose(&renderer)
+	mat.material_library_dispose(&materials)
 	ui.ui_dispose(&ctx)
 	foster.TextureDispose(&font_texture)
 	foster.TextureDispose(&icons)
@@ -201,13 +209,15 @@ render :: proc(g: ^foster.App) {
 		}
 		ui.ui_set_scope(&ctx, "")
 	}
-	foster.BatcherClear(&batcher)
-	ui.ui_draw(&ctx, &batcher)
+	ui.ui_draw(&ctx, &renderer)
 	if !ui.ui_input_capture(&ctx).pointer && foster.MousePressed(&mouse, .Left) {
 		world_clicks += 1
 	}
-	foster.GraphicsDeviceClear(&g.GraphicsDevice, target, theme.window_bg)
-	foster.BatcherRender(&batcher, target)
+	// submit 后记录清空：截图那一帧直接提交到离屏目标。
+	capture_now := shot && !pending && frame >= 10 && capture.Width == target.WidthInPixels && capture.Height == target.HeightInPixels
+	output := capture_now ? foster.DrawableTargetFromTarget(&capture) : target
+	foster.GraphicsDeviceClear(&g.GraphicsDevice, output, theme.window_bg)
+	r2d.submit(&renderer, {target = output})
 	frame += 1
 	if shot && (capture.Width != target.WidthInPixels || capture.Height != target.HeightInPixels) {
 		foster.TargetDispose(&capture)
@@ -218,10 +228,7 @@ render :: proc(g: ^foster.App) {
 		save_capture()
 		fmt.printf("UI diagnostics: errors=%d, pool_overflow=%v\n", ctx.error_count, ctx.pool_overflow)
 		foster.Exit(g)
-	} else if shot && frame >= 10 {
-		offscreen := foster.DrawableTargetFromTarget(&capture)
-		foster.GraphicsDeviceClear(&g.GraphicsDevice, offscreen, theme.window_bg)
-		foster.BatcherRender(&batcher, offscreen)
+	} else if capture_now {
 		pending = true
 	}
 }

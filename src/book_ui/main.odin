@@ -23,6 +23,8 @@ import "core:fmt"
 import "core:os"
 import ui "olib:kit/ui"
 import foster "olib:foster"
+import mat "olib:kit/rendering/material"
+import r2d "olib:kit/rendering/2d"
 
 // ==============================================================================
 // 类型
@@ -39,7 +41,7 @@ Page :: struct {
 	target:  foster.Target, // 页面纹理
 	// Each target needs its own GPU vertex/index buffers. Reusing a batcher
 	// would overwrite earlier page draws before the frame is submitted.
-	batcher: foster.Batcher,
+	batcher: r2d.Render2D,
 }
 
 // 读者通过页面控件改变的内容，翻页后保留。
@@ -58,6 +60,7 @@ Grimoire :: struct {
 // GPU 资源（pages、renderer、batcher、字体）在 startup 创建、shutdown 释放。
 // 不嵌入 foster.App：web 下 Run 会把 App 搬到堆上，嵌入的那份即过期。
 World :: struct {
+	materials: mat.Material_Library,
 	opts:          Options,
 	harness:       Harness,
 
@@ -81,8 +84,8 @@ World :: struct {
 	chrome_theme:  ui.UI_Theme,
 	font:          foster.MsdfFont,
 	font_texture:  foster.Texture,
-	scene_batch:   foster.Batcher,
-	overlay_batch: foster.Batcher,
+	scene_batch:   r2d.Render2D,
+	overlay_batch: r2d.Render2D,
 	pointer:       foster.Vec2, // 可绘制区域像素，控制栏、拾取和拖拽共用
 	pointer_down:  bool,
 	focus_page:    int, // 接收 Tab / Enter 的页
@@ -133,13 +136,14 @@ startup :: proc(app: ^foster.App) {
 	reset_pose(world)
 	apply_start_pose(world)
 	device := &app.GraphicsDevice
+	world.materials = {device = device}
 	for &page in world.pages {
 		if !ui.ui_init(&page.ctx, PAGE_W, PAGE_H) {
 			abort_startup(world, app, "Page UI init failed")
 			return
 		}
 		foster.TargetInit(&page.target, device, PAGE_W, PAGE_H, "book page UI")
-		foster.BatcherInit(&page.batcher, device, "page compositor")
+		assert(r2d.init(&page.batcher, &world.materials) == "")
 	}
 	if !ui.ui_init(&world.overlay, 1180, 860) || !bake_font(world, app) {
 		abort_startup(world, app, "Font unavailable. Pass: font <path-to-ttf>")
@@ -149,8 +153,8 @@ startup :: proc(app: ^foster.App) {
 		ui.ui_register_font(&page.ctx, &world.font, world.font_texture)
 	}
 	ui.ui_register_font(&world.overlay, &world.font, world.font_texture)
-	foster.BatcherInit(&world.scene_batch, device, "book mesh")
-	foster.BatcherInit(&world.overlay_batch, device, "book controls")
+	assert(r2d.init(&world.scene_batch, &world.materials) == "")
+	assert(r2d.init(&world.overlay_batch, &world.materials) == "")
 	if !renderer_init(&world.renderer, app) {
 		abort_startup(world, app, "Book 3D renderer requires a Vulkan or D3D12 graphics device")
 		return
@@ -193,11 +197,12 @@ shutdown :: proc(app: ^foster.App) {
 	for &page in world.pages {
 		ui.ui_dispose(&page.ctx)
 		foster.TargetDispose(&page.target)
-		foster.BatcherDispose(&page.batcher)
+		r2d.dispose(&page.batcher)
 	}
 	ui.ui_dispose(&world.overlay)
-	foster.BatcherDispose(&world.scene_batch)
-	foster.BatcherDispose(&world.overlay_batch)
+	r2d.dispose(&world.scene_batch)
+	r2d.dispose(&world.overlay_batch)
+	mat.material_library_dispose(&world.materials)
 	foster.TextureDispose(&world.font_texture)
 	foster.MsdfFontDispose(&world.font)
 	harness_shutdown(world)
@@ -244,7 +249,7 @@ render :: proc(app: ^foster.App) {
 	}
 
 	// ---- 1. 先建屏幕控制栏，它的按钮优先于书拿到指针 ----
-	foster.BatcherClear(&world.overlay_batch)
+	r2d.reset(&world.overlay_batch)
 	build_overlay(world, app, w, h)
 	over_overlay := ui.ui_input_capture(&world.overlay).pointer
 
@@ -263,7 +268,7 @@ render :: proc(app: ^foster.App) {
 
 	// ---- 4. 3D 书，再把一切合成到窗口 ----
 	render_book3d(world, app, int(w), int(h))
-	compose_frame(world, app, w, h)
+	compose_frame(world, app, target)
 	harness_end_frame(world, app)
 }
 
@@ -328,33 +333,33 @@ read_navigation :: proc(app: ^foster.App) -> ui.UI_Navigation {
 // 布局一页并渲染进它的纹理。
 draw_page :: proc(world: ^World, app: ^foster.App, index: int) {
 	page := &world.pages[index]
-	foster.BatcherClear(&page.batcher)
+	r2d.reset(&page.batcher)
 	build_page(world, app, index)
 	offscreen := foster.DrawableTargetFromTarget(&page.target)
 	foster.GraphicsDeviceClear(&app.GraphicsDevice, offscreen, PAPER_COLOR)
-	foster.BatcherRender(&page.batcher, offscreen)
+	r2d.submit(&page.batcher, {target = offscreen})
 }
 
 // 背景斜线，再把 3D 结果（在 renderer.target 里，因为要深度缓冲）作为全屏四边形
 // 画上去，最上面是控制栏。
-compose_frame :: proc(world: ^World, app: ^foster.App, w, h: f32) {
+compose_frame :: proc(world: ^World, app: ^foster.App, target: foster.DrawableTarget) {
+	w, h := f32(target.WidthInPixels), f32(target.HeightInPixels)
 	batch := &world.scene_batch
-	foster.BatcherClear(batch)
+	r2d.reset(batch)
 	for i in 0..<20 {
 		y := f32(i) * h / 20
-		foster.BatcherLine(batch, {0, y}, {w, y + 45}, 1, {27, 35, 38, 255})
+		r2d.line(batch, {0, y}, {w, y + 45}, 1, {27, 35, 38, 255})
 	}
-	foster.BatcherPushSampler(batch, foster.TextureSamplerMake(.Linear, .Clamp))
-	foster.BatcherQuadTexture(
+	r2d.push_sampler(batch, foster.TextureSamplerMake(.Linear, .Clamp))
+	r2d.quad_texture(
 		batch,
 		foster.TargetAttachment(&world.renderer.target),
 		{0, 0}, {w, 0}, {w, h}, {0, h},
 		{0, 0}, {1, 0}, {1, 1}, {0, 1},
 		foster.White,
 	)
-	foster.BatcherPopSampler(batch)
-	target := foster.DrawableTargetFromWindow(&app.Window)
+	r2d.pop_sampler(batch)
 	foster.GraphicsDeviceClear(&app.GraphicsDevice, target, BACKGROUND_COLOR)
-	foster.BatcherRender(batch, target)
-	foster.BatcherRender(&world.overlay_batch, target)
+	r2d.submit(batch, {target = target})
+	r2d.submit(&world.overlay_batch, {target = target})
 }

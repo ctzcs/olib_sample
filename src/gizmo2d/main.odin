@@ -10,11 +10,14 @@ import debug "olib:core/debug"
 import foster "olib:foster"
 import appkit "olib:kit/app"
 import gizmo "olib:kit/gizmo"
+import r2d "olib:kit/rendering/2d"
+import mat "olib:kit/rendering/material"
 import world "olib:kit/world"
 
 // 分区：资源与生命周期 / 输入与自动验收 / 原生像素绘制
 Demo :: struct {
-	batch: foster.Batcher,
+	materials: mat.Material_Library,
+	batch: r2d.Render2D,
 	font_source: foster.Font,
 	font: foster.SpriteFont,
 	target: foster.Target,
@@ -70,7 +73,13 @@ run_app :: proc() -> bool {
 
 startup :: proc(app: ^foster.App) {
 	s := foster.AppGetUserDataAs(app, Demo)
-	foster.BatcherInit(&s.batch, &app.GraphicsDevice)
+	s.materials = {device = &app.GraphicsDevice}
+	if reason := r2d.init(&s.batch, &s.materials); reason != "" {
+		fmt.eprintln("Gizmo2D:", reason)
+		s.failed = true
+		foster.Exit(app)
+		return
+	}
 	for path in ([]string{"C:/Windows/Fonts/segoeui.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
 		"/System/Library/Fonts/Supplemental/Arial.ttf"}) {
 		if !os.exists(path) do continue
@@ -92,7 +101,8 @@ shutdown :: proc(app: ^foster.App) {
 	foster.TargetDispose(&s.target)
 	foster.SpriteFontDispose(&s.font)
 	foster.FontDispose(&s.font_source)
-	foster.BatcherDispose(&s.batch)
+	r2d.dispose(&s.batch)
+	mat.material_library_dispose(&s.materials)
 }
 
 // ==============================================================================
@@ -217,8 +227,7 @@ render :: proc(app: ^foster.App) {
 	editor.input(&s.editor, s.viewports,
 		{pointer = s.pointer, pressed = foster.MouseLeftPressed(mouse), down = foster.MouseLeftDown(mouse),
 			enabled = foster.Focused(&app.Window) || s.shot, allow_start = true}, s.ui_scale)
-	foster.BatcherClear(&s.batch)
-	foster.BatcherRect(&s.batch, {0, 0, w, h}, {18, 26, 36, 255})
+	r2d.rect(&s.batch, {0, 0, w, h}, {18, 26, 36, 255})
 	text(s, "2D GIZMOS / Camera2D", {24, 22})
 	text(s, "Drag handles | Arrows: pan | Q/E: camera rotation | Z/X: zoom | R: reset | Ctrl Z/Y: undo/redo | Esc: cancel", {24, 48})
 	names := [3]string{"MOVE / WORLD X,Y", "ROTATE / Z", "SCALE / LOCAL X,Y"}
@@ -228,15 +237,15 @@ render :: proc(app: ^foster.App) {
 		s.viewports[i] = rect
 		world.camera2d_set_viewport(&s.editor.cameras[i], int(rect.Width), int(rect.Height))
 		text(s, names[i], {rect.X+8, 80})
-		foster.BatcherPushScissor(&s.batch, {int(rect.X), int(rect.Y), int(rect.Width), int(rect.Height)})
-		foster.BatcherRect(&s.batch, rect, {29, 42, 55, 255})
+		r2d.push_scissor(&s.batch, {int(rect.X), int(rect.Y), int(rect.Width), int(rect.Height)})
+		r2d.rect(&s.batch, rect, {29, 42, 55, 255})
 		for line in -12..=12 {
 			a, _ := gizmo.project2d(&s.editor.cameras[i], {f32(line), -12}, rect)
 			b, _ := gizmo.project2d(&s.editor.cameras[i], {f32(line), 12}, rect)
-			foster.BatcherLine(&s.batch, a, b, 1, {48, 63, 77, 255})
+			r2d.line(&s.batch, a, b, 1, {48, 63, 77, 255})
 			a, _ = gizmo.project2d(&s.editor.cameras[i], {-12, f32(line)}, rect)
 			b, _ = gizmo.project2d(&s.editor.cameras[i], {12, f32(line)}, rect)
-			foster.BatcherLine(&s.batch, a, b, 1, {48, 63, 77, 255})
+			r2d.line(&s.batch, a, b, 1, {48, 63, 77, 255})
 		}
 		v := s.editor.values[i]
 		points: [4]foster.Vec2
@@ -246,22 +255,24 @@ render :: proc(app: ^foster.App) {
 				p.x*math.sin(v.rotation)+p.y*math.cos(v.rotation)}
 			points[n], _ = gizmo.project2d(&s.editor.cameras[i], v.position+rotated, rect)
 		}
-		foster.BatcherTriangle(&s.batch, points[0], points[1], points[2], {61, 117, 126, 255})
-		foster.BatcherTriangle(&s.batch, points[0], points[2], points[3], {61, 117, 126, 255})
-		for point, n in points do foster.BatcherLine(&s.batch, point, points[(n+1)%4], 2, {144, 207, 199, 255})
+		r2d.triangle(&s.batch, points[0], points[1], points[2], {61, 117, 126, 255})
+		r2d.triangle(&s.batch, points[0], points[2], points[3], {61, 117, 126, 255})
+		for point, n in points do r2d.line(&s.batch, point, points[(n+1)%4], 2, {144, 207, 199, 255})
 		geometry := gizmo.transform2d_geometry(&s.editor.cameras[i], v, rect, gizmo.Mode(i), s.ui_scale)
 		labels := gizmo.transform2d_draw(&s.batch, &s.editor.handles[i], geometry, s.pointer, s.ui_scale)
 		axis_names := [3]string{"X", "Y", "Z"}
 		for label, axis in labels {
 			if label.visible do text(s, axis_names[axis], label.position)
 		}
-		foster.BatcherPopScissor(&s.batch)
+		r2d.pop_scissor(&s.batch)
 		text(s, fmt.tprintf("pos %.2f, %.2f | angle %.1f", v.position.x, v.position.y, v.rotation*180/math.PI),
 			{rect.X+8, h-64})
 		text(s, fmt.tprintf("scale %.2f, %.2f", v.scale.x, v.scale.y), {rect.X+8, h-40})
 	}
-	foster.BatcherRender(&s.batch, foster.DrawableTargetFromWindow(&app.Window))
-	foster.BatcherRender(&s.batch, foster.DrawableTargetFromTarget(&s.target))
+	// 场景提交到离屏目标（截图从这里读回），再把结果作为一张图画到窗口。
+	r2d.submit(&s.batch, {target = foster.DrawableTargetFromTarget(&s.target)})
+	r2d.texture(&s.batch, foster.TargetAttachment(&s.target), {1, 0, 0, 1, 0, 0})
+	r2d.submit(&s.batch, {target = foster.DrawableTargetFromWindow(&app.Window)})
 	if s.shot && (s.frame == 116 || s.frame == 140) {
 		bytes := foster.TextureDownloadData(foster.TargetAttachment(&s.target))
 		defer delete(bytes)
@@ -278,5 +289,5 @@ render :: proc(app: ^foster.App) {
 }
 
 text :: proc(s: ^Demo, value: string, position: foster.Vec2) {
-	foster.SpriteFontDraw(&s.batch, &s.font, value, position, foster.White)
+	r2d.text(&s.batch, &s.font, value, position)
 }

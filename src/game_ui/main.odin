@@ -5,6 +5,8 @@ import "core:math"
 import "core:os"
 
 import app "olib:kit/app"
+import r2d "olib:kit/rendering/2d"
+import mat "olib:kit/rendering/material"
 import ui "olib:kit/ui"
 import foster "olib:foster"
 import clay "olib:thirdparty/clay-odin"
@@ -16,7 +18,8 @@ game: foster.App
 console: app.Cli_Console
 ctx: ui.UI_Context
 theme: ui.UI_Theme
-batcher: foster.Batcher
+materials: mat.Material_Library
+renderer: r2d.Render2D
 font: foster.MsdfFont
 font_texture, icons, button_skin: foster.Texture
 font_path: string
@@ -87,7 +90,11 @@ startup :: proc(g: ^foster.App) {
 	theme.heading_font_size = 25
 	theme.body_font_size = 16
 	theme.small_font_size = 12
-	foster.BatcherInit(&batcher, &g.GraphicsDevice, "ruins and HUD")
+	materials = {device = &g.GraphicsDevice}
+	if reason := r2d.init(&renderer, &materials); reason != "" {
+		fmt.eprintln(reason)
+		os.exit(1)
+	}
 	make_icons(&g.GraphicsDevice)
 	make_button_skin(&g.GraphicsDevice)
 	if shot {
@@ -97,7 +104,8 @@ startup :: proc(g: ^foster.App) {
 
 shutdown :: proc(g: ^foster.App) {
 	app.cli_dispose(&console)
-	foster.BatcherDispose(&batcher)
+	r2d.dispose(&renderer)
+	mat.material_library_dispose(&materials)
 	ui.ui_dispose(&ctx)
 	foster.TextureDispose(&font_texture)
 	foster.TextureDispose(&icons)
@@ -177,13 +185,10 @@ render :: proc(g: ^foster.App) {
 	ui.ui_set_modal(&ctx, paused ? "pause" : "")
 	ui.ui_begin(&ctx, g.Time.Delta)
 	declare_hud()
-	foster.BatcherClear(&batcher)
-	foster.BatcherPushMatrixTRS(&batcher, origin, {fit, fit}, 0, false)
-	foster.BatcherPushMode(&batcher, .Fill)
+	r2d.push_matrix_trs(&renderer, origin, {fit, fit}, 0, false)
 	draw_world()
-	foster.BatcherPopMode(&batcher)
-	foster.BatcherPopMatrix(&batcher)
-	ui.ui_draw(&ctx, &batcher)
+	r2d.pop_matrix(&renderer)
+	ui.ui_draw(&ctx, &renderer)
 	consumed := ui.ui_input_capture(&ctx)
 	if !paused && !consumed.keyboard {
 		if foster.KeyboardPressed(keyboard, .B) {
@@ -199,17 +204,17 @@ render :: proc(g: ^foster.App) {
 		destination = {math.clamp((mx - origin.x) / fit, 250, 840),
 			math.clamp((my - origin.y) / fit, 265, 600)}
 	}
-	foster.GraphicsDeviceClear(&g.GraphicsDevice, target, {8, 14, 18, 255})
-	foster.BatcherRender(&batcher, target)
+	// submit 后记录清空：截图那一帧直接提交到离屏目标。
+	capture_now := shot && !pending && frame >= (smoke ? 23 : 10)
+	output := capture_now ? foster.DrawableTargetFromTarget(&capture) : target
+	foster.GraphicsDeviceClear(&g.GraphicsDevice, output, {8, 14, 18, 255})
+	r2d.submit(&renderer, {target = output})
 	frame += 1
 	if shot && pending {
 		save_capture()
 		fmt.printf("UI diagnostics: errors=%d, pool_overflow=%v\n", ctx.error_count, ctx.pool_overflow)
 		foster.Exit(g)
-	} else if shot && frame >= (smoke ? 23 : 10) {
-		offscreen := foster.DrawableTargetFromTarget(&capture)
-		foster.GraphicsDeviceClear(&g.GraphicsDevice, offscreen, {8, 14, 18, 255})
-		foster.BatcherRender(&batcher, offscreen)
+	} else if capture_now {
 		pending = true
 	}
 }

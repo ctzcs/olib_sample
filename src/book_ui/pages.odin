@@ -12,6 +12,7 @@ package main
 import "core:fmt"
 import ui "olib:kit/ui"
 import foster "olib:foster"
+import r2d "olib:kit/rendering/2d"
 import clay "olib:thirdparty/clay-odin"
 
 PAPER_COLOR :: foster.Color{240, 231, 202, 255}
@@ -192,29 +193,29 @@ illustration_space :: proc(height: f32, id: string) {
 	if clay.UI()(decl) {}
 }
 
-draw_sigil :: proc(batch: ^foster.Batcher) {
+draw_sigil :: proc(batch: ^r2d.Render2D) {
 	box := clay.GetElementData(clay.ID("sigil")).boundingBox
 	p := foster.Vec2{box.x + box.width * 0.5, box.y + box.height * 0.5}
 	ink := foster.Color{88, 121, 95, 255}
-	foster.BatcherCircleLine(batch, p, 54, 1.5, 48, ink)
-	foster.BatcherCircleLine(batch, p, 45, 1, 48, {165, 151, 105, 255})
+	r2d.circle_line(batch, p, 54, 1.5, 48, ink)
+	r2d.circle_line(batch, p, 45, 1, 48, {165, 151, 105, 255})
 	top, right := p + foster.Vec2{0, -38}, p + foster.Vec2{22, 0}
 	bottom, left := p + foster.Vec2{0, 38}, p + foster.Vec2{-22, 0}
-	foster.BatcherQuadPoints(batch, top, right, bottom, left, ink)
-	foster.BatcherCircle(batch, p, 11, 24, PAPER_COLOR)
-	foster.BatcherCircle(batch, p, 5, 16, {179, 135, 68, 255})
+	r2d.quad(batch, top, right, bottom, left, ink)
+	r2d.circle(batch, p, 11, 24, PAPER_COLOR)
+	r2d.circle(batch, p, 5, 16, {179, 135, 68, 255})
 }
 
-draw_satchel :: proc(batch: ^foster.Batcher) {
+draw_satchel :: proc(batch: ^r2d.Render2D) {
 	box := clay.GetElementData(clay.ID("satchel")).boundingBox
 	x, y := box.x + box.width * 0.5 - 34, box.y + 18
-	foster.BatcherRect(batch, {x, y, 68, 70}, {133, 113, 78, 255})
-	foster.BatcherRect(batch, {x - 5, y, 78, 26}, {102, 94, 68, 255})
-	foster.BatcherRect(batch, {x + 27, y + 13, 14, 30}, {189, 159, 93, 255})
-	foster.BatcherCircleLine(batch, {x + 34, y - 1}, 17, 4, 24, {102, 94, 68, 255})
+	r2d.rect(batch, {x, y, 68, 70}, {133, 113, 78, 255})
+	r2d.rect(batch, {x - 5, y, 78, 26}, {102, 94, 68, 255})
+	r2d.rect(batch, {x + 27, y + 13, 14, 30}, {189, 159, 93, 255})
+	r2d.circle_line(batch, {x + 34, y - 1}, 17, 4, 24, {102, 94, 68, 255})
 }
 
-draw_map :: proc(batch: ^foster.Batcher) {
+draw_map :: proc(batch: ^r2d.Render2D) {
 	box := clay.GetElementData(clay.ID("map")).boundingBox
 	ink := foster.Color{92, 127, 107, 255}
 	water := foster.Color{102, 149, 160, 255}
@@ -222,18 +223,18 @@ draw_map :: proc(batch: ^foster.Batcher) {
 	// 松树
 	for i in 0..<7 {
 		x, y := box.x + 25 + f32(i) * 38, box.y + 25 + f32(i % 3) * 30
-		foster.BatcherTriangle(batch, {x, y}, {x - 11, y + 22}, {x + 11, y + 22}, ink)
+		r2d.triangle(batch, {x, y}, {x - 11, y + 22}, {x + 11, y + 22}, ink)
 	}
 	// 河流：上下交替的折线
 	for i in 0..<5 {
 		x := box.x + 75 + f32(i) * 32
 		y0 := box.y + 100 - f32(i % 2) * 14
 		y1 := box.y + 100 - f32((i + 1) % 2) * 14
-		foster.BatcherLine(batch, {x, y0}, {x + 32, y1}, 3, water)
+		r2d.line(batch, {x, y0}, {x + 32, y1}, 3, water)
 	}
 	// 天文台
-	foster.BatcherCircleLine(batch, {box.x + 242, box.y + 37}, 12, 2, 24, brass)
-	foster.BatcherLine(batch, {box.x + 242, box.y + 18}, {box.x + 242, box.y + 56}, 1, brass)
+	r2d.circle_line(batch, {box.x + 242, box.y + 37}, 12, 2, 24, brass)
+	r2d.line(batch, {box.x + 242, box.y + 18}, {box.x + 242, box.y + 56}, 1, brass)
 }
 
 // ==============================================================================

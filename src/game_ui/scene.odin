@@ -3,6 +3,7 @@ package main
 import "core:math"
 
 import foster "olib:foster"
+import r2d "olib:kit/rendering/2d"
 
 // 场景与图标均由几何生成，示例不依赖外部美术资产。
 GOLD :: foster.Color{196, 167, 105, 255}
@@ -11,14 +12,14 @@ MUTED :: foster.Color{137, 148, 143, 255}
 JADE :: foster.Color{94, 190, 167, 255}
 
 line :: proc(a, b: foster.Vec2, width: f32, color: foster.Color) {
-	foster.BatcherLine(&batcher, a, b, width, color)
+	r2d.line(&renderer, a, b, width, color)
 }
 
 ellipse :: proc(center: foster.Vec2, rx, ry: f32, color: foster.Color) {
 	for i in 0..<48 {
 		a := f32(i) * math.TAU / 48
 		b := f32(i + 1) * math.TAU / 48
-		foster.BatcherTriangle(&batcher, center,
+		r2d.triangle(&renderer, center,
 			center + foster.Vec2{math.cos(a) * rx, math.sin(a) * ry},
 			center + foster.Vec2{math.cos(b) * rx, math.sin(b) * ry}, color)
 	}
@@ -36,9 +37,9 @@ ring :: proc(center: foster.Vec2, rx, ry, width: f32, color: foster.Color) {
 stone :: proc(x, y, w, d, height: f32, top: foster.Color) {
 	a, b := foster.Vec2{x, y - d - height}, foster.Vec2{x + w, y - height}
 	c, e := foster.Vec2{x, y + d - height}, foster.Vec2{x - w, y - height}
-	foster.BatcherQuadPoints(&batcher, e, c, {x, y + d}, {x - w, y}, {25, 38, 40, 255})
-	foster.BatcherQuadPoints(&batcher, c, b, {x + w, y}, {x, y + d}, {17, 29, 34, 255})
-	foster.BatcherQuadPoints(&batcher, a, b, c, e, top)
+	r2d.quad(&renderer, e, c, {x, y + d}, {x - w, y}, {25, 38, 40, 255})
+	r2d.quad(&renderer, c, b, {x + w, y}, {x, y + d}, {17, 29, 34, 255})
+	r2d.quad(&renderer, a, b, c, e, top)
 	line(e, c, 1, {72, 90, 82, 255})
 	line(c, b, 1, {54, 72, 69, 255})
 }
@@ -54,11 +55,11 @@ pillar :: proc(x, y, height: f32) {
 }
 
 torch :: proc(x, y: f32) {
-	foster.BatcherCircle(&batcher, {x, y - 23}, 100, 40, {34, 23, 6, 52}, {0, 0, 0, 0})
+	r2d.circle_gradient(&renderer, {x, y - 23}, 100, 40, {34, 23, 6, 52}, {0, 0, 0, 0})
 	stone(x, y, 12, 7, 20, {63, 58, 44, 255})
-	foster.BatcherTriangle(&batcher, {x - 9, y - 23}, {x + 7, y - 23},
+	r2d.triangle(&renderer, {x - 9, y - 23}, {x + 7, y - 23},
 		{x + 2 + math.sin(elapsed * 4) * 3, y - 55}, {222, 120, 40, 255})
-	foster.BatcherTriangle(&batcher, {x - 4, y - 23}, {x + 4, y - 23},
+	r2d.triangle(&renderer, {x - 4, y - 23}, {x + 4, y - 23},
 		{x, y - 42}, {255, 223, 128, 255})
 }
 
@@ -66,25 +67,25 @@ actor :: proc(at: foster.Vec2, enemy: bool) {
 	x, y := at.x, at.y
 	ellipse({x, y + 5}, 20, 8, {2, 8, 10, 155})
 	cloak := enemy ? foster.Color{74, 87, 83, 255} : foster.Color{145, 60, 40, 255}
-	foster.BatcherTriangle(&batcher, {x, y - 37}, {x - 18, y + 2}, {x + 14, y + 4}, cloak)
-	foster.BatcherTriangle(&batcher, {x, y - 37}, {x + 14, y + 4}, {x + 5, y - 1}, {52, 37, 31, 255})
-	foster.BatcherQuad(&batcher, foster.Rect{x - 6, y - 33, 13, 23}, {109, 125, 119, 255})
-	foster.BatcherTriangle(&batcher, {x - 9, y - 34}, {x + 1, y - 50}, {x + 10, y - 34}, {154, 164, 147, 255})
-	foster.BatcherQuad(&batcher, foster.Rect{x - 7, y - 35, 15, 5}, {32, 42, 41, 255})
+	r2d.triangle(&renderer, {x, y - 37}, {x - 18, y + 2}, {x + 14, y + 4}, cloak)
+	r2d.triangle(&renderer, {x, y - 37}, {x + 14, y + 4}, {x + 5, y - 1}, {52, 37, 31, 255})
+	r2d.rect(&renderer, foster.Rect{x - 6, y - 33, 13, 23}, {109, 125, 119, 255})
+	r2d.triangle(&renderer, {x - 9, y - 34}, {x + 1, y - 50}, {x + 10, y - 34}, {154, 164, 147, 255})
+	r2d.rect(&renderer, foster.Rect{x - 7, y - 35, 15, 5}, {32, 42, 41, 255})
 	line({x + 13, y - 13}, {x + 29, y - 44}, 3, {198, 208, 185, 255})
 	line({x + 12, y - 24}, {x + 24, y - 18}, 3, GOLD)
 	line({x - 4, y - 7}, {x - 7, y + 6}, 5, {40, 42, 36, 255})
 	line({x + 5, y - 7}, {x + 7, y + 6}, 5, {40, 42, 36, 255})
 	if enemy {
-		foster.BatcherQuad(&batcher, foster.Rect{x - 22, y - 64, 44, 4}, {29, 28, 26, 255})
-		foster.BatcherQuad(&batcher, foster.Rect{x - 21, y - 63, 32, 2}, {155, 65, 54, 255})
+		r2d.rect(&renderer, foster.Rect{x - 22, y - 64, 44, 4}, {29, 28, 26, 255})
+		r2d.rect(&renderer, foster.Rect{x - 21, y - 63, 32, 2}, {155, 65, 54, 255})
 	}
 }
 
 draw_world :: proc() {
-	foster.BatcherQuad(&batcher, foster.Rect{0, 0, VIEW_W, VIEW_H},
+	r2d.rect_gradient(&renderer, foster.Rect{0, 0, VIEW_W, VIEW_H},
 		foster.Color{10, 23, 28, 255}, {16, 32, 34, 255}, {9, 17, 23, 255}, {6, 15, 22, 255})
-	foster.BatcherCircle(&batcher, {606, 265}, 360, 64, {13, 31, 27, 55}, {0, 0, 0, 0})
+	r2d.circle_gradient(&renderer, {606, 265}, 360, 64, {13, 31, 27, 55}, {0, 0, 0, 0})
 	// 远处残墙与尖塔。
 	for i in 0..<14 {
 		x := f32(i) * 98 - 20
@@ -123,9 +124,9 @@ draw_world :: proc() {
 	torch(362, 337)
 	torch(804, 346)
 	// 发光的封印门。
-	foster.BatcherCircle(&batcher, {583, 228}, 84, 48, {11, 42, 35, 68}, {0, 0, 0, 0})
-	foster.BatcherQuadPoints(&batcher, {557, 207}, {583, 172}, {609, 207}, {583, 239}, {56, 137, 111, 255})
-	foster.BatcherQuadPoints(&batcher, {569, 207}, {583, 186}, {597, 207}, {583, 226}, {162, 222, 179, 255})
+	r2d.circle_gradient(&renderer, {583, 228}, 84, 48, {11, 42, 35, 68}, {0, 0, 0, 0})
+	r2d.quad(&renderer, {557, 207}, {583, 172}, {609, 207}, {583, 239}, {56, 137, 111, 255})
+	r2d.quad(&renderer, {569, 207}, {583, 186}, {597, 207}, {583, 226}, {162, 222, 179, 255})
 	actor({414, 391}, true)
 	actor({721, 425}, true)
 	ring(player + {0, 5}, 26, 12, 2, GOLD)
@@ -145,16 +146,16 @@ draw_world :: proc() {
 			line({x, y}, {x - 3, y - 9}, 2, {49, 71, 48, 255})
 			line({x, y}, {x + 4, y - 7}, 1, {72, 87, 52, 255})
 		} else {
-			foster.BatcherQuad(&batcher, foster.Rect{x, y, 3, 2}, {55, 68, 58, 255})
+			r2d.rect(&renderer, foster.Rect{x, y, 3, 2}, {55, 68, 58, 255})
 		}
 	}
 	for i in 0..<30 {
 		x := 270 + f32((i * 131) % 600)
 		y := 170 + f32((i * 79) % 380) - math.sin(elapsed + f32(i)) * 6
-		foster.BatcherQuad(&batcher, foster.Rect{x, y, 2, 2}, {110, 137, 84, 160})
+		r2d.rect(&renderer, foster.Rect{x, y, 2, 2}, {110, 137, 84, 160})
 	}
 	// 下沿雾色，为快捷栏留出可读的暗部。
-	foster.BatcherQuad(&batcher, foster.Rect{0, 610, VIEW_W, 190},
+	r2d.rect_gradient(&renderer, foster.Rect{0, 610, VIEW_W, 190},
 		foster.Color{0, 0, 0, 0}, {0, 0, 0, 0}, {5, 10, 14, 248}, {5, 10, 14, 248})
 }
 

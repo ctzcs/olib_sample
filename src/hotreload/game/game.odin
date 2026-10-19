@@ -3,6 +3,8 @@ package game
 
 import reload "olib:core/hotreload"
 import foster "olib:foster"
+import mat "olib:kit/rendering/material"
+import r2d "olib:kit/rendering/2d"
 
 import "../contract"
 
@@ -12,12 +14,13 @@ SIZE :: f32(64)
 COLOR :: foster.Color{100, 229, 185, 255}
 TRAIL_LENGTH :: 24
 
-// 状态可以放数组和 Batcher：热重载时整个 State 交给新版本，数组原样保留，
-// Batcher 在 start 里重新创建。不要放字符串字面量、函数指针这类指向 DLL 自己数据的指针。
+// 状态可以放数组和 Render2D：热重载时整个 State 交给新版本，数组原样保留，
+// Render2D 在 start 里重新创建。不要放字符串字面量、函数指针这类指向 DLL 自己数据的指针。
 State :: struct {
 	position: [2]f32,
 	trail: [dynamic][2]f32, // 堆上的数组：新旧版本共用，退出时在 drop 里释放
-	batcher: foster.Batcher, // 资源：每个版本自己创建（start）和释放（stop）
+	materials: mat.Material_Library,
+	batcher: r2d.Render2D, // 资源：每个版本自己创建（start）和释放（stop）
 }
 
 // 把各个回调交给库；填 nil 的回调表示不需要。
@@ -39,14 +42,16 @@ reset :: proc(state: ^State, host: ^contract.Services) {
 	state.trail = make([dynamic][2]f32)
 }
 
-// 每次加载新版本时调用：创建资源（会覆盖交接过来的旧 Batcher）。
+// 每次加载新版本时调用：创建资源（会覆盖交接过来的旧 Render2D）。
 start :: proc(state: ^State, host: ^contract.Services) {
-	foster.BatcherInit(&state.batcher, &host.app.GraphicsDevice, "hotreload sample")
+	state.materials = {device = &host.app.GraphicsDevice}
+	assert(r2d.init(&state.batcher, &state.materials) == "")
 }
 
 // 每次卸载旧版本时调用：释放这个版本的资源。
 stop :: proc(state: ^State, host: ^contract.Services) {
-	foster.BatcherDispose(&state.batcher)
+	r2d.dispose(&state.batcher)
+	mat.material_library_dispose(&state.materials)
 }
 
 // 游戏真正结束时调用一次：释放 State 拥有的堆数据。
@@ -61,11 +66,11 @@ update :: proc(state: ^State, host: ^contract.Services, dt: f64) {
 }
 
 render :: proc(state: ^State, host: ^contract.Services, dt: f64) {
-	foster.BatcherClear(&state.batcher)
+	r2d.reset(&state.batcher)
 	for point, i in state.trail {
 		fade := u8(40 + 100 * i / TRAIL_LENGTH)
-		foster.BatcherRect(&state.batcher, foster.Rect{point.x, point.y, SIZE, SIZE}, {COLOR.R, COLOR.G, COLOR.B, fade})
+		r2d.rect(&state.batcher, foster.Rect{point.x, point.y, SIZE, SIZE}, {COLOR.R, COLOR.G, COLOR.B, fade})
 	}
-	foster.BatcherRect(&state.batcher, foster.Rect{state.position.x, state.position.y, SIZE, SIZE}, COLOR)
-	foster.BatcherRender(&state.batcher, foster.DrawableTargetFromWindow(&host.app.Window))
+	r2d.rect(&state.batcher, foster.Rect{state.position.x, state.position.y, SIZE, SIZE}, COLOR)
+	r2d.submit(&state.batcher, {target = foster.DrawableTargetFromWindow(&host.app.Window)})
 }

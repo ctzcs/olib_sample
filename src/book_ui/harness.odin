@@ -16,8 +16,9 @@ import "core:fmt"
 import "core:math"
 import "core:os"
 import kit_app "olib:kit/app"
-import ui "olib:kit/ui"
+
 import foster "olib:foster"
+import ui "olib:kit/ui"
 import kw "olib:kit/world"
 import clay "olib:thirdparty/clay-odin"
 
@@ -119,8 +120,8 @@ harness_end_frame :: proc(world: ^World, app: ^foster.App) {
 	} else if h.frame >= 12 {
 		offscreen := foster.DrawableTargetFromTarget(&h.capture)
 		foster.GraphicsDeviceClear(&app.GraphicsDevice, offscreen, BACKGROUND_COLOR)
-		foster.BatcherRender(&world.scene_batch, offscreen)
-		foster.BatcherRender(&world.overlay_batch, offscreen)
+		ui.ui_render(&world.overlay, &world.overlay_batch, &world.overlay.ops)
+		compose_frame(world, app, offscreen)
 		h.capture_pending = true
 	}
 }
