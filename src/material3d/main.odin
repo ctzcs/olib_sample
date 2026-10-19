@@ -17,7 +17,7 @@ import world "olib:kit/world"
 State :: struct {
 	resources: foster.StorageContainer,
 	materials: mat.Material_Library,
-	models: [2]r3d.Model,
+	materials_shown: [2]^mat.Material, // 同一网格、同一材质文件的两份实例：右边改了 hue
 	mesh: foster.Mesh,
 	target: foster.Target,
 	batch: foster.Batcher,
@@ -107,16 +107,15 @@ startup :: proc(app: ^foster.App) {
 		fail(app, reason)
 		return
 	}
-	for &model in s.models {
+	for &material in s.materials_shown {
 		reason: string
-		model.mesh = &s.mesh
-		model.material, reason = mat.material_load(&s.materials, s.path)
+		material, reason = mat.material_load(&s.materials, s.path)
 		if reason != "" {
 			fail(app, reason)
 			return
 		}
 	}
-	_ = mat.material_set_number(s.models[1].material, "Outlined_body", "hue", {0.7, 0, 0, 0})
+	_ = mat.material_set_number(s.materials_shown[1], "Outlined_body", "hue", {0.7, 0, 0, 0})
 	primitive := sphere()
 	defer delete(primitive.vertices)
 	defer delete(primitive.indices)
@@ -156,7 +155,7 @@ update :: proc(app: ^foster.App) {
 		}
 	}
 	if foster.KeyboardPressed(keys, .R) {
-		if reason := mat.material_reload(&s.materials, s.models[0].material); reason != "" {
+		if reason := mat.material_reload(&s.materials, s.materials_shown[0]); reason != "" {
 			fmt.eprintln(reason)
 		}
 	}
@@ -178,32 +177,32 @@ render :: proc(app: ^foster.App) {
 	colors := [1]foster.Color{{31,38,51,255}}
 	foster.GraphicsDeviceClear(device, target, colors[:], 1, 0, foster.ClearMask.Color | foster.ClearMask.Depth)
 	world.camera3d_set_viewport(&s.camera, w, h)
-	view := r3d.Model_View{target = target, view_projection = world.camera3d_view_projection(&s.camera),
+	view := r3d.View{target = target, view_projection = world.camera3d_view_projection(&s.camera),
 		time = s.time}
 	if s.swarm_on {
 		// 100 万实例只有一次 Draw；相机退到能看到整块阵列的位置。
 		world.camera3d_set_position(&s.camera, {0, 25, 85})
 		view.view_projection = world.camera3d_view_projection(&s.camera)
-		if error := r3d.model_draw_buffer(s.swarm.model, &s.swarm.instances, s.swarm.count, view); error != .None {
+		if error := r3d.model_draw_buffer(s.swarm.material, &s.swarm.mesh, &s.swarm.instances, s.swarm.count, view); error != .None {
 			fail(app, mat.draw_error_text(error))
 		}
 	} else {
 		world.camera3d_set_position(&s.camera, {0, 1.2, 6})
 		view.view_projection = world.camera3d_view_projection(&s.camera)
 	}
-	for model, i in s.models {
+	for material, i in s.materials_shown {
 		if s.swarm_on do break
 		transform := world.matrix4_translation(i == 0 ? -1.25 : 1.25, 0, 0)
 		pass_id := s.grouped || !s.outline ? mat.Pass_Id("body") : ""
-		error := r3d.model_draw(model, transform, view, pass_id)
+		error := r3d.model_draw(material, &s.mesh, transform, view, pass_id)
 		if error != .None {
 			fail(app, mat.draw_error_text(error))
 		}
 	}
 	if s.grouped && s.outline && !s.swarm_on {
-		for model, i in s.models {
+		for material, i in s.materials_shown {
 			transform := world.matrix4_translation(i == 0 ? -1.25 : 1.25, 0, 0)
-			if error := r3d.model_draw(model, transform, view, "outline"); error != .None {
+			if error := r3d.model_draw(material, &s.mesh, transform, view, "outline"); error != .None {
 				fail(app, mat.draw_error_text(error))
 			}
 		}

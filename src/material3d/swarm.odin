@@ -11,12 +11,10 @@ import mat "olib:kit/rendering/material"
 import world "olib:kit/world"
 
 SWARM_DEFAULT_COUNT :: 1_000_000
-// Swarm 效果声明的 [Instance] 字段数（只有 hue）：缓冲的槽数和平铺数组的步长都用它，由项目自己决定。
-SWARM_SLOTS :: 1
 
 Swarm :: struct {
 	mesh: foster.Mesh,
-	model: r3d.Model,
+	material: ^mat.Material,
 	instances: r3d.Model_Buffer,
 	count: int,
 	ready: bool,
@@ -41,16 +39,18 @@ swarm_init :: proc(s: ^State, device: ^foster.GraphicsDevice, count: int) -> str
 	if !r3d.mesh3d_upload(&swarm.mesh, device, &primitive, "swarm") do return "Cannot upload swarm mesh"
 	material, reason := mat.material_load(&s.materials, "swarm.json")
 	if reason != "" do return reason
-	swarm.model = {mesh = &swarm.mesh, material = material}
+	swarm.material = material
 	// 字段名解析成槽位句柄：百万次赋值里没有字符串比较。
 	hue := mat.instance_slot(material, "hue")
 	if !hue.valid do return "Material has no hue Instance field"
-	if !r3d.model_buffer_init(&swarm.instances, device, count, SWARM_SLOTS, "swarm instances") {
+	// 缓冲的槽数（每个实例的 [Instance] 字段数）取自材质，平铺数组的步长也用它。
+	if !r3d.model_buffer_init(&swarm.instances, material, count, "swarm instances") {
 		return "Cannot create instance buffer"
 	}
 	instances := make([]r3d.Model_Item, count)
 	defer delete(instances)
-	values := make([][4]f32, count*SWARM_SLOTS) // 每个实例连续 SWARM_SLOTS 个 float4
+	slots := swarm.instances.slots
+	values := make([][4]f32, count*slots) // 每个实例连续 slots 个 float4
 	defer delete(values)
 	side := int(math.ceil(math.pow(f32(count), 1.0/3.0)))
 	spacing :: f32(0.6)
@@ -65,7 +65,7 @@ swarm_init :: proc(s: ^State, device: ^foster.GraphicsDevice, count: int) -> str
 		translation := world.matrix4_translation((x-half)*spacing, (y-half)*spacing, (z-half)*spacing)
 		instance.world = world.matrix4_multiply(world.matrix4_scaling(scale, scale, scale), translation)
 		instance.tint = {0.75 + 0.25*jitter, 0.75 + 0.25*swarm_hash(u32(i)*3 + 1), 1, 1}
-		_ = mat.instance_array_set(values, SWARM_SLOTS, i, hue, {z/f32(side), 0, 0, 0}) // hue 沿 Z 轴渐变
+		_ = mat.instance_array_set(values, slots, i, hue, {z/f32(side), 0, 0, 0}) // hue 沿 Z 轴渐变
 	}
 	if !r3d.model_buffer_upload(&swarm.instances, instances, 0, values) do return "Cannot upload instances"
 	swarm.count = count

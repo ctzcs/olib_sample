@@ -135,7 +135,7 @@ render :: proc(app: ^foster.App) {
 	view := r2d.Sprite_View{target = target, time = s.time}
 	if s.swarm_on {
 		if !s.swarm.ready {
-			if reason := swarm_init(s, &app.GraphicsDevice, s.swarm_count, f32(target.WidthInPixels), f32(target.HeightInPixels)); reason != "" {
+			if reason := swarm_init(s, s.swarm_count, f32(target.WidthInPixels), f32(target.HeightInPixels)); reason != "" {
 				fail(app, reason)
 				return
 			}
