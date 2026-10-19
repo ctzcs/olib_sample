@@ -1,25 +1,12 @@
-// EXE 与 DLL 的共享宿主协议。改这里须同时重建宿主并增加 HOST_VERSION。
+// 宿主（EXE）和游戏模块（DLL）共享的协议。改这里要升级 HOST_VERSION 并重启宿主。
 package contract
 
 import foster "olib:foster"
-import ui "olib:kit/ui"
 
-HOST_VERSION :: u64(2)
+HOST_VERSION :: u64(1)
 
-Input :: struct {
-	move: [2]f32,
-	toggle_pause: bool,
-	mouse: foster.Vec2,
-	mouse_down: bool,
-	wheel: foster.Vec2,
-	navigation: ui.UI_Navigation,
-}
-
-// 宿主拥有 font/texture/device；模块只借用，卸载前释放引用它们的 UI 与 Batcher。
+// 宿主持有并保证地址稳定；模块只在回调里借用。
 Services :: struct {
 	app: ^foster.App,
-	font: ^foster.MsdfFont,
-	font_texture: foster.Texture,
-	scale: f32,
-	input: Input,
+	move: [2]f32, // 方向键 / WASD 输入，每个分量 -1..1
 }

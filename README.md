@@ -161,22 +161,17 @@ run.bat forward3d shot
 - `forward3d_test.odin` checks the cbuffer layouts against the shader and the mesh winding;
   olib's `odin run tools/check` runs it.
 
-## Hot reload: live game logic and UI
+## Hot reload: the smallest example
 
 ```bat
 run.bat hotreload
 ```
 
-`hotreload` is a playable collector game with a persistent window and replaceable game DLL.
-Move with WASD/arrows, collect a node, then pause and save changes to
-`src/hotreload/view/ui.odin` (title, colors, layout) or `src/hotreload/logic/rules.odin`
-(movement speed and pickup reward). Successful builds update the running game while keeping
-position, score, collected nodes, elapsed time, pause state and the dynamic movement trail.
-Failed builds retain the previous game and display diagnostics; fix and save to recover.
-F5 retries, Space pauses, and Escape exits. `New run` explicitly resets progress.
-
-`scaled` uses 125% UI scaling; `narrow` starts at 960x720.
-See [the walkthrough and ownership contract](src/hotreload/README.md).
+`hotreload` is the minimal wiring: a persistent window (`main.odin`, about 120 lines) and a game DLL
+(`game/game.odin`, about 90 lines) that moves a square with WASD/arrows. While it runs, change `SPEED`,
+`SIZE` or `COLOR` in `game/game.odin` and save: the next build replaces the game and the square keeps
+its position. A failed build keeps the previous version and prints the compiler output; fix and save to recover.
+See [the walkthrough](src/hotreload/README.md). For a real project start from `tools/new-game`.
 
 ## Shader Lab: live 2D / 3D shader development
 
