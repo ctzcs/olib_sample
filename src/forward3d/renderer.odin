@@ -103,7 +103,7 @@ standard_shaders_dispose :: proc(s: ^Standard_Shaders) {
 
 // 渲染项 payload：经 r3d.Render_Queue(Standard_Draw) 排序后由 renderer_render 发射。
 Standard_Draw :: struct {
-	mesh:     ^foster.Mesh, // Foster Mesh（r3d.mesh3d_upload 上传）
+	mesh:     ^foster.Mesh, // Foster Mesh（r3d.mesh_upload 上传）
 	material: Standard_Material_3D,
 	world:    world.Matrix4,
 	skinned:  bool, // 蒙皮走 palette 槽的材质变体

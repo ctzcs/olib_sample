@@ -36,7 +36,7 @@ swarm_init :: proc(s: ^State, device: ^foster.GraphicsDevice, count: int) -> str
 	primitive := sphere(s.rings, s.segments)
 	defer delete(primitive.vertices)
 	defer delete(primitive.indices)
-	if !r3d.mesh3d_upload(&swarm.mesh, device, &primitive, "swarm") do return "Cannot upload swarm mesh"
+	if !r3d.mesh_upload(&swarm.mesh, device, &primitive, "swarm") do return "Cannot upload swarm mesh"
 	material, reason := mat.material_load(&s.materials, "swarm.json")
 	if reason != "" do return reason
 	swarm.material = material

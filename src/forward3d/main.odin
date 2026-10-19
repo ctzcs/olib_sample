@@ -103,7 +103,7 @@ startup :: proc(g: ^foster.App) {
 
 shutdown :: proc(g: ^foster.App) {
 	for &object in objects {
-		r3d.mesh3d_dispose(&object.mesh)
+		r3d.mesh_dispose(&object.mesh)
 	}
 	r3d.queue_dispose(&queue)
 	r3d.debug_draw_dispose(&debug)
@@ -129,7 +129,7 @@ add_object :: proc(shape: Shape, primitive: dasset.Dasset_Primitive, position: [
 	p := primitive
 	defer primitive_dispose(&p)
 	object := &objects[shape]
-	r3d.mesh3d_upload(&object.mesh, &game.GraphicsDevice, &p, fmt.tprint(shape))
+	r3d.mesh_upload(&object.mesh, &game.GraphicsDevice, &p, fmt.tprint(shape))
 	object.material = standard_material_from_dasset(&p.material)
 	object.position = position
 	object.spin = spin

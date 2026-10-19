@@ -119,7 +119,7 @@ startup :: proc(app: ^foster.App) {
 	primitive := sphere()
 	defer delete(primitive.vertices)
 	defer delete(primitive.indices)
-	if !r3d.mesh3d_upload(&s.mesh, device, &primitive) {
+	if !r3d.mesh_upload(&s.mesh, device, &primitive) {
 		fail(app, "Cannot upload model")
 		return
 	}
