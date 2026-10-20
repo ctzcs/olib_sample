@@ -161,6 +161,17 @@ run.bat forward3d shot
 - `forward3d_test.odin` checks the cbuffer layouts against the shader and the mesh winding;
   olib's `odin run tools/check` runs it.
 
+```bat
+run.bat stylized3d
+run.bat stylized3d shot
+```
+
+- `stylized3d`: a Celeste64-style frame on Render3D — per-view `View.globals` (sun, fog, billboard
+  camera axes), a `ZTest Greater` silhouette for the hero behind a wall, and a depth-edge post effect
+  that samples the scene depth attachment through `material_set_texture`. See
+  [src/stylized3d/README.md](src/stylized3d/README.md).
+- `shot` writes the final composite to `library/screenshots/stylized3d.png`; `shot flat` disables the edge pass.
+
 ## Hot reload: the smallest example
 
 ```bat

@@ -1,0 +1,57 @@
+// 朝向相机的圆形面片（金币）：instanced，世界矩阵只取平移和缩放，面片沿视图块里的相机轴展开，
+// 因此同一份记录提交给主相机和小地图时，各自朝向各自的相机。半透明、不写深度。
+Shader "Billboard"
+{
+    Label "stylized3d / Billboard"
+    Preview 3D
+    Output "color"
+    Instanced
+    Properties
+    {
+        _glow ("Glow", Range(0,2)) = 0.6
+    }
+
+    Pass "transparent"
+    {
+        Label "Card"
+        Draw Model
+        Cull None
+        Blend Alpha
+        ZTest Less
+        ZWrite Off
+        HLSLPROGRAM
+        #include "Stylized.hlsli"
+        // OlibInstanceInput 必须是第一个成员；只用 Position，其后的网格属性未用不影响属性编号。
+        struct Input {
+            OlibInstanceInput Instance;
+            float3 Position : TEXCOORD0;
+            float3 Normal : TEXCOORD1;
+            float2 Uv : TEXCOORD2;
+            float4 Tangent : TEXCOORD3;
+        };
+        struct Output { float4 Position : SV_Position; float2 Uv : TEXCOORD0; OlibInstance Instance; };
+        Output vertex_main(Input v)
+        {
+            Output o;
+            olib_instance = olib_instance_from(v.Instance);
+            SceneView view = scene_view(VertexView);
+            float4x4 world = olib_world(v.Instance);
+            float size = length(world[0].xyz);
+            float3 position = world[3].xyz + (v.Position.x * view.camera_right.xyz + v.Position.y * view.camera_up.xyz) * size;
+            o.Position = mul(float4(position, 1), Wvp); // instanced：Wvp 即 ViewProjection
+            o.Uv = v.Position.xy + 0.5;
+            o.Instance = olib_instance;
+            return o;
+        }
+        float4 fragment_main(Output v) : SV_Target0
+        {
+            olib_instance = v.Instance;
+            float r = length(v.Uv * 2 - 1);
+            float disc = 1 - smoothstep(0.82, 1.0, r);
+            float rim = smoothstep(0.55, 0.72, r) * disc;
+            float3 color = InstanceTint.rgb * (1 + _glow * (1 - r)) + rim * 0.2;
+            return float4(color, disc * InstanceTint.a);
+        }
+        ENDHLSL
+    }
+}

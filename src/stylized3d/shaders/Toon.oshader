@@ -1,0 +1,42 @@
+// 地形、墙与方块：两阶卡通光 + 距离雾；太阳与雾来自视图块，颜色来自 tint（models 的每项 tint）。
+Shader "Toon"
+{
+    Label "stylized3d / Scene"
+    Preview 3D
+    Output "color"
+    Properties
+    {
+        _color ("Color", Color) = (1,1,1,1)
+        _checker ("Checker", Range(0,1)) = 0.08
+    }
+
+    Pass "scene"
+    {
+        Label "Scene"
+        Draw Model
+        Cull Back
+        Blend Opaque
+        ZTest Less
+        ZWrite On
+        HLSLPROGRAM
+        #include "Stylized.hlsli"
+        struct Output { float4 Position : SV_Position; float3 Normal : TEXCOORD0; float3 World : TEXCOORD1; };
+        Output vertex_main(MeshInput v)
+        {
+            Output o;
+            o.Position = mul(float4(v.Position, 1), Wvp);
+            o.Normal = mul(v.Normal, (float3x3)World);
+            o.World = mul(float4(v.Position, 1), World).xyz;
+            return o;
+        }
+        float4 fragment_main(Output v) : SV_Target0
+        {
+            // 世界坐标棋盘格：只铺在朝上的面上，每个 1×1 格交替明暗，不依赖网格 UV。
+            float2 cell = floor(v.World.xz + 0.001);
+            float checker = fmod(abs(cell.x + cell.y), 2.0) * step(0.5, normalize(v.Normal).y);
+            float3 albedo = _color.rgb * Tint.rgb * (1 - _checker * checker);
+            return float4(stylized_shade(albedo, v.Normal, v.World), 1);
+        }
+        ENDHLSL
+    }
+}

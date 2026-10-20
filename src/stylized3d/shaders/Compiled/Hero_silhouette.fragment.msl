@@ -1,0 +1,23 @@
+#include <metal_stdlib>
+#include <simd/simd.h>
+
+using namespace metal;
+
+struct type_MaterialParams
+{
+    float4 _olib_param_0;
+    float4 _olib_param_1;
+};
+
+struct fragment_main_out
+{
+    float4 out_var_SV_Target0 [[color(0)]];
+};
+
+fragment fragment_main_out fragment_main(constant type_MaterialParams& MaterialParams [[buffer(1)]])
+{
+    fragment_main_out out = {};
+    out.out_var_SV_Target0 = MaterialParams._olib_param_1;
+    return out;
+}
+

@@ -1,0 +1,54 @@
+// 深度描边后处理（Render2D 精灵材质）：_image 是场景颜色，_depth 是运行时用 material_set_texture
+// 绑定的场景深度附件。邻域平均深度比本像素远时，本像素在物体轮廓的近侧，混入描边色。
+// 画到另一张 Target：深度附件不能在仍是当前深度目标时采样。
+Shader "DepthEdge"
+{
+    Label "stylized3d / Depth edge"
+    Preview 2D
+    Output "color"
+    Properties
+    {
+        _image ("Scene", 2D) = ""
+        [Filter(Nearest)] _depth ("Depth", 2D) = ""
+        _edge ("Edge color", Color) = (0.07,0.05,0.20,0.75)
+        _texel ("Texel size", Vector2(0,1)) = (0.002,0.004)
+        _clip ("Near / far", Vector2(0,1000)) = (0.1,120)
+        _threshold ("Threshold", Range(0,1)) = 0.04
+    }
+
+    Pass "edge"
+    {
+        Label "Edge"
+        Draw Sprite
+        SpriteTexture _image
+        Blend Opaque
+        HLSLPROGRAM
+        cbuffer ViewBlock : register(b0, space1) { float4x4 Projection; float4 VertexClock; };
+        struct Input { OlibSpriteInput Sprite; };
+        struct Output { float4 Position : SV_Position; float2 Uv : TEXCOORD0; };
+        Output vertex_main(Input v)
+        {
+            OlibSprite s = olib_sprite(v.Sprite);
+            Output o;
+            o.Position = mul(Projection, float4(s.position, 0, 1));
+            o.Uv = s.uv;
+            return o;
+        }
+        // 硬件深度 [0,1] 换回到相机的距离（kit/world 透视矩阵：右手系、深度 [0,1]）。
+        float linear_depth(float2 uv)
+        {
+            float d = _depth.Sample(_depthSampler, uv).r;
+            return _clip.x * _clip.y / (_clip.y - d * (_clip.y - _clip.x));
+        }
+        float4 fragment_main(Output v) : SV_Target0
+        {
+            float center = linear_depth(v.Uv);
+            float around = (linear_depth(v.Uv + float2(_texel.x, 0)) + linear_depth(v.Uv - float2(_texel.x, 0)) +
+                linear_depth(v.Uv + float2(0, _texel.y)) + linear_depth(v.Uv - float2(0, _texel.y))) * 0.25;
+            float edge = step(_threshold * center, around - center);
+            float4 color = _image.Sample(_imageSampler, v.Uv);
+            return float4(lerp(color.rgb, _edge.rgb, edge * _edge.a), 1);
+        }
+        ENDHLSL
+    }
+}
