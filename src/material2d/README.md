@@ -10,6 +10,8 @@ odin run src/material2d -collection:olib=../olib -out:build/material2d.exe
 只有相邻且材质、参数、纹理与状态兼容的记录才合并，不跨材质排序。
 
 R 重载 material.json，失败保留旧材质；Esc 退出。shot 在固定帧截图到 library/screenshots。
+相机：拖动平移，滚轮以光标为中心缩放，F 复位（经 push_matrix 作用于普通记录和 Sprite_Buffer）。
+P 切换右上角 olib 性能面板（kit/tools/perf_overlay）：FPS、帧时间曲线，以及 update / render 的 profiler 作用域耗时；面板自带 Render2D 单独提交，不计入场景 Draw。配合 immediate 看真实上限，不测 GPU，shot 时不创建。
 业务入口是 material_load、r2d.image/texture、r2d.submit；初始化一个 Render2D 即可，
 与 3D 共用 Material_Library。清屏、其他渲染、重载或释放资源之前先提交。
 

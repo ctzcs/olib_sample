@@ -9,9 +9,13 @@ import "core:os"
 import "core:strconv"
 import "core:time"
 import SDL "vendor:sdl3"
+import profiler "olib:core/profiler"
 import foster "olib:foster"
 import r2d "olib:kit/rendering/2d"
 import mat "olib:kit/rendering/material"
+import perf "olib:kit/tools/perf_overlay"
+
+import fonts "../../shared/msdf_font"
 
 State :: struct {
 	resources: foster.StorageContainer,
@@ -28,6 +32,12 @@ State :: struct {
 	swarm_count: int,
 	delta_sum, cpu_sum: f64,
 	texture: foster.Texture,
+	// 2D 相机（像素空间）：拖动平移，滚轮以光标为中心缩放，F 复位。
+	zoom: f32,
+	offset, mouse_last: [2]f32,
+	perf: perf.Overlay, // olib 悬浮性能面板，P 切换；shot 时不创建
+	font: foster.MsdfFont, // 面板借用的 MSDF 字体
+	font_texture: foster.Texture,
 	time: f32,
 	failed: bool,
 	grouped: bool,
@@ -40,6 +50,7 @@ main :: proc() {
 	s := new(State)
 	defer free(s)
 	s.grouped = true
+	s.zoom = 1
 	s.swarm_count = SWARM_DEFAULT_COUNT
 	for arg in os.args[1:] {
 		switch {
@@ -52,7 +63,7 @@ main :: proc() {
 		}
 	}
 	app: foster.App
-	config := foster.DefaultAppConfig("Material2D | Space: grouped/object passes | I: swarm | R: reload material | Esc: exit", 1000, 640)
+	config := foster.DefaultAppConfig("Material2D | Drag: pan | Wheel: zoom | F: reset view | P: perf | Space: grouped/object passes | I: swarm | R: reload material | Esc: exit", 1000, 640)
 	if s.immediate do config.UpdateMode = foster.UnlockedStep()
 	foster.InitApp(&app, config)
 	foster.AppSetUserData(&app, s)
@@ -80,6 +91,14 @@ startup :: proc(app: ^foster.App) {
 		fail(app, reason)
 		return
 	}
+	if !s.shot {
+		profiler.profile_init() // update / render 等作用域会列在面板里
+		if font, texture, ok := fonts.load(&app.GraphicsDevice); ok {
+			s.font, s.font_texture = font, texture
+			s.perf.corner = .Top_Right
+			s.perf.visible = perf.init(&s.perf, &app.GraphicsDevice, &s.font, s.font_texture)
+		}
+}
 	image := foster.ImageMake(256, 256)
 	defer foster.ImageDispose(&image)
 	for y in 0..<256 {
@@ -116,6 +135,7 @@ fail :: proc(app: ^foster.App, reason: string) {
 }
 
 update :: proc(app: ^foster.App) {
+	profiler.profile_scope("update")
 	s := foster.AppGetUserDataAs(app, State)
 	s.time += f32(app.Time.Delta)
 	keys := &app.Input.State.Keyboard
@@ -123,6 +143,12 @@ update :: proc(app: ^foster.App) {
 	if foster.KeyboardPressed(keys, .Space) do s.grouped = !s.grouped
 	if s.shot && s.frame > 10 do s.delta_sum += f64(app.Time.Delta)
 	if foster.KeyboardPressed(keys, .I) do s.swarm_on = !s.swarm_on
+	if foster.KeyboardPressed(keys, .F) || foster.KeyboardPressed(keys, .I) {
+		s.zoom, s.offset = 1, {}
+	}
+	if foster.KeyboardPressed(keys, .P) do s.perf.visible = !s.perf.visible
+	perf.frame(&s.perf, f32(app.Time.Delta)) // 隐藏时也记录，打开时历史完整
+	camera_input(s, app)
 	if foster.KeyboardPressed(keys, .R) {
 		if reason := mat.material_reload(&s.materials, s.material); reason != "" {
 			fmt.eprintln(reason)
@@ -130,7 +156,23 @@ update :: proc(app: ^foster.App) {
 	}
 }
 
+// 屏幕像素 = 场景像素 * zoom + offset；缩放时保持光标下的场景点不动。
+camera_input :: proc(s: ^State, app: ^foster.App) {
+	mouse := &app.Input.State.Mouse
+	size, pixels := foster.Size(&app.Window), foster.SizeInPixels(&app.Window)
+	position := [2]f32{mouse.Position.X*f32(pixels.X)/f32(max(1, size.X)), mouse.Position.Y*f32(pixels.Y)/f32(max(1, size.Y))}
+	delta := position - s.mouse_last
+	s.mouse_last = position
+	if foster.MouseLeftDown(mouse) || foster.MouseRightDown(mouse) || foster.MouseMiddleDown(mouse) do s.offset += delta
+	if mouse.Wheel.Y != 0 {
+		zoom := math.clamp(s.zoom*math.pow(f32(1.15), mouse.Wheel.Y), 0.1, 200)
+		s.offset = position - (position-s.offset)*(zoom/s.zoom)
+		s.zoom = zoom
+	}
+}
+
 render :: proc(app: ^foster.App) {
+	profiler.profile_scope("render")
 	s := foster.AppGetUserDataAs(app, State)
 	if s.failed do return
 	start := time.tick_now()
@@ -138,6 +180,7 @@ render :: proc(app: ^foster.App) {
 	target := s.shot ? foster.DrawableTargetFromTarget(&s.capture) : foster.DrawableTargetFromWindow(&app.Window)
 	foster.GraphicsDeviceClear(&app.GraphicsDevice, target, foster.Color{31, 38, 51, 255})
 	view := r2d.View{target = target, time = s.time}
+	r2d.push_matrix(&s.renderer, {s.zoom, 0, 0, s.zoom, s.offset.x, s.offset.y}) // submit 后自动恢复
 	if s.swarm_on {
 		if !s.swarm.ready {
 			if reason := swarm_init(s, s.swarm_count, f32(target.WidthInPixels), f32(target.HeightInPixels)); reason != "" {
@@ -146,10 +189,11 @@ render :: proc(app: ^foster.App) {
 			}
 			fmt.printf("Swarm: %d sprites, 1 draw\n", s.swarm.count)
 		}
-		if error := r2d.buffer(&s.renderer, s.material, &s.swarm.buffer, s.swarm.count, &s.texture, "body"); error != .None {
+		if error := r2d.buffer(&s.renderer, s.material, &s.swarm.buffer, s.swarm.count, &s.texture); error != .None {
 			fail(app, mat.draw_error_text(error))
 		}
 		if error := r2d.submit(&s.renderer, view); error != .None do fail(app, mat.draw_error_text(error))
+		draw_panel(s, app, target)
 		finish_shot(s, app)
 		return
 	}
@@ -187,7 +231,13 @@ render :: proc(app: ^foster.App) {
 		s.last_grouped = s.grouped
 		s.last_draw_calls = s.renderer.draw_calls
 	}
+	draw_panel(s, app, target)
 	finish_shot(s, app)
+}
+
+// 场景提交之后叠加 olib 性能面板：它自带 Render2D 单独提交，不计入场景 Draw，也不受相机矩阵影响。
+draw_panel :: proc(s: ^State, app: ^foster.App, target: foster.DrawableTarget) {
+	perf.draw(&s.perf, target, f32(target.WidthInPixels)/f32(max(1, foster.Size(&app.Window).X)))
 }
 
 // shot 模式：固定帧数后读回离屏目标写 PNG 并退出；swarm 模式多跑一些帧并打印平均耗时。
@@ -225,6 +275,10 @@ save_capture :: proc(s: ^State) {
 shutdown :: proc(app: ^foster.App) {
 	s := foster.AppGetUserDataAs(app, State)
 	swarm_dispose(s)
+	perf.dispose(&s.perf) // 先释放面板，再释放它借用的字体
+	if s.font_texture.Resource != nil do foster.TextureDispose(&s.font_texture)
+	foster.MsdfFontDispose(&s.font)
+	delete(profiler.profile_stats)
 	if s.shot do foster.TargetDispose(&s.capture)
 	r2d.dispose(&s.renderer)
 	mat.material_library_dispose(&s.materials)

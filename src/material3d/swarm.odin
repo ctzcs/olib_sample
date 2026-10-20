@@ -1,7 +1,8 @@
 package main
 
 // 大批量实例化：一个低模球体 + 一个 Model_Buffer，默认 100 万个实例，每个 Pass 只有 1 次 Draw。
-// 实例数据（世界矩阵、tint、hue）在加载时一次性上传，之后每帧不再上传实例数据；颜色动画在着色器里按 Clock 计算。
+// 实例数据（世界矩阵、tint、hue、运动参数）在加载时一次性上传，之后每帧不再上传实例数据。
+// 所有实例每帧都在动：位置由顶点着色器按 Clock 和各自的运动参数计算，颜色由片元着色器按 Clock 计算。
 // 真实游戏做视锥/遮挡剔除时，把实例按空间分块放进多个 Model_Buffer，只画可见的块。
 import "core:math"
 
@@ -12,6 +13,9 @@ import mat "olib:kit/rendering/material"
 import world "olib:kit/world"
 
 SWARM_DEFAULT_COUNT :: 1_000_000
+// 运动参数范围：环绕半径（世界单位）与最小缩放决定 bounds 需要外扩多少。
+SWARM_RADIUS_MAX :: f32(0.2)
+SWARM_SCALE_MIN :: f32(0.10)
 
 Swarm :: struct {
 	mesh: foster.Mesh,
@@ -47,6 +51,8 @@ swarm_init :: proc(s: ^State, device: ^foster.GraphicsDevice, count: int) -> str
 	// 字段名解析成槽位句柄：百万次赋值里没有字符串比较。
 	hue := mat.instance_slot(material, "hue")
 	if !hue.valid do return "Material has no hue Instance field"
+	motion := mat.instance_slot(material, "motion")
+	if !motion.valid do return "Material has no motion Instance field"
 	// 缓冲的槽数（每个实例的 [Instance] 字段数）取自材质，平铺数组的步长也用它。
 	if !s.automatic {
 		if reason := r3d.model_buffer_init(&swarm.instances, material, count, "swarm instances"); reason != "" do return reason
@@ -65,14 +71,21 @@ swarm_init :: proc(s: ^State, device: ^foster.GraphicsDevice, count: int) -> str
 		x, y, z := f32(i % side), f32((i / side) % side), f32(layer)
 		half := f32(side) / 2
 		jitter := swarm_hash(u32(i))
-		scale := 0.10 + 0.14*swarm_hash(u32(i) + 0x9e3779b9)
+		scale := SWARM_SCALE_MIN + 0.14*swarm_hash(u32(i) + 0x9e3779b9)
 		translation := world.matrix4_translation((x-half)*spacing, (y-half)*spacing, (z-half)*spacing)
 		instance.world = world.matrix4_multiply(world.matrix4_scaling(scale, scale, scale), translation)
 		instance.tint = {0.75 + 0.25*jitter, 0.75 + 0.25*swarm_hash(u32(i)*3 + 1), 1, 1}
 		_ = mat.instance_array_set(values, slots, i, hue, {z/f32(side), 0, 0, 0}) // hue 沿 Z 轴渐变
+		// 相位 0..2π、角速度 0.6..2.0 弧度/秒、半径 0.05..SWARM_RADIUS_MAX：只在这里写一次。
+		phase := 2 * math.PI * swarm_hash(u32(i)*7 + 3)
+		speed := 0.6 + 1.4*swarm_hash(u32(i)*11 + 5)
+		radius := 0.05 + (SWARM_RADIUS_MAX - 0.05)*swarm_hash(u32(i)*13 + 7)
+		_ = mat.instance_array_set(values, slots, i, motion, {phase, speed, radius, 0})
 	}
-	extent := f32(side) * spacing * 0.5 + 0.3
-	swarm.local_bounds = {min = {-1, -1, -1}, max = {1, 1, 1}}
+	// bounds 要包住运动范围：世界盒加环绕半径；局部盒按最小缩放把世界半径换算回网格空间。
+	extent := f32(side) * spacing * 0.5 + 0.3 + SWARM_RADIUS_MAX
+	local := 1 + SWARM_RADIUS_MAX / SWARM_SCALE_MIN
+	swarm.local_bounds = {min = {-local, -local, -local}, max = {local, local, local}}
 	swarm.bounds = {min = {-extent, -extent, -extent}, max = {extent, extent, extent}}
 	if s.automatic {
 		swarm.items = instances

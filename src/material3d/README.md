@@ -7,6 +7,8 @@
 - V：第二视图。先把同一份记录的 body 提交到侧面相机（关闭调试线），再提交主视图的 body/outline。
   主视图网格线仍保留；第二视图按原生像素合成到左上角。
 - I：切换常驻实例阵列；R：clear 记录后重新载入左球材质，右球保持独立；Esc：退出。
+- 相机：左键拖动环绕，右键/中键拖动平移，滚轮缩放，F 复位；按 I 切换时按场景尺度复位。
+- P：右上角 olib 性能面板（kit/tools/perf_overlay）：FPS、帧时间曲线，以及 update / render / r3d.submit 的 profiler 作用域耗时。帧时间含垂直同步，配合 immediate 看真实上限；不测 GPU 与 Draw 数，不进 shot 截图。
 - 启动参数 `views`、`models`、`swarm` 可直接进入对应演示。
 
 ## 业务调用
@@ -38,7 +40,12 @@ CPU 数组直接沿用 Model_Item 和平铺 `[][4]f32`，不创建业务 GPU 缓
 `run.bat material3d swarm` 默认 1,000,000 个实例，可加 `count=N`。
 这个模式使用常驻 Model_Buffer，加载时上传一次，之后通过 `r3d.buffer` 记录引用，每 Pass 一次 Draw。
 只有整块世界 bounds 剔除与排序，没有逐实例剔除、读回或重排；真实场景可以按空间分块。
-动画在 Swarm.oshader 里用 Clock 计算。常驻实例的字段值来自缓冲，自动 models 则支持每 Pass 的独立覆盖。
+**每个实例每帧都在动，但缓冲加载后不再改写**：实例里存的是不变的运动参数（`_motion`：相位、角速度、环绕半径），
+顶点着色器用顶点 b0 的 Clock 算出当前位置，片元着色器用 Clock 变色，CPU 每帧只传时间。
+大量物体按规律运动（粒子、草、鱼群）都适合这样做；需要逐帧积累状态的模拟才需要 CPU 改数据或 compute shader。
+每实例 112 字节（矩阵 64 + tint 16 + hue 16 + motion 16），100 万实例约 112 MB 显存（容量按 2 的幂取整）。
+bounds 按最大环绕半径外扩，否则运动出盒的部分会被剔除。
+常驻实例的字段值来自缓冲，自动 models 则支持每 Pass 的独立覆盖。
 
 两种模式均使用低模球（默认 rings=2、segments=4），相机按阵列规模调整。
 `rings=N segments=N` 改网格精度，`samples=1|2|4` 改 MSAA，`back` 将远处常驻实例放在前面比较深度测试成本。

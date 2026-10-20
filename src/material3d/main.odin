@@ -3,6 +3,7 @@ package main
 // 两个模型共用 Shader/Effect，分别持有 Material 实例。无 shaderdev 或 Shader Lab 依赖。
 import "core:fmt"
 import "core:math"
+import "core:math/linalg"
 import "core:os"
 import "core:path/filepath"
 import "core:strconv"
@@ -10,10 +11,14 @@ import "core:time"
 import SDL "vendor:sdl3"
 import dasset "olib:core/dasset"
 import foster "olib:foster"
+import profiler "olib:core/profiler"
 import r2d "olib:kit/rendering/2d"
 import r3d "olib:kit/rendering/3d"
 import mat "olib:kit/rendering/material"
+import perf "olib:kit/tools/perf_overlay"
 import world "olib:kit/world"
+
+import fonts "../../shared/msdf_font"
 
 State :: struct {
 	resources: foster.StorageContainer,
@@ -27,6 +32,10 @@ State :: struct {
 	measured_frames, draw_calls, submitted_instances: int,
 	batch: r2d.Render2D,
 	camera: world.Camera3D,
+	// 轨道相机：左键拖动旋转，右键/中键拖动平移，滚轮缩放，F 复位；切换 swarm 时按场景尺度复位。
+	yaw, pitch, distance: f32,
+	focus: [3]f32,
+	mouse_last: [2]f32,
 	time: f32,
 	outline: bool,
 	grouped: bool,
@@ -45,6 +54,9 @@ State :: struct {
 	immediate, back: bool,
 	rings, segments: int,
 	samples: foster.SampleCount,
+	perf: perf.Overlay, // olib 悬浮性能面板，P 切换；只画到窗口，不进 shot 截图
+	font: foster.MsdfFont, // 面板借用的 MSDF 字体
+	font_texture: foster.Texture,
 }
 
 main :: proc() {
@@ -92,7 +104,7 @@ main :: proc() {
 	s.resources.Root = filepath.dir(absolute)
 	s.path = filepath.base(absolute)
 	app: foster.App
-	config := foster.DefaultAppConfig("Material3D | G: grouped/object passes | Space: outline | I: swarm | V: second view | R: reload left | Esc: exit", 1100, 720)
+	config := foster.DefaultAppConfig("Material3D | Drag: orbit/pan | Wheel: zoom | F: reset view | P: perf | G: passes | Space: outline | I: swarm | V: second view | R: reload left | Esc", 1100, 720)
 	if s.immediate do config.UpdateMode = foster.UnlockedStep() // 不限帧；GPU 耗时需要单独的时间戳测量
 	foster.InitApp(&app, config)
 	foster.AppSetUserData(&app, s)
@@ -139,9 +151,14 @@ startup :: proc(app: ^foster.App) {
 	}
 	if s.immediate { _ = SDL.SetGPUSwapchainParameters(device.Device, app.Window.Handle, .SDR, .IMMEDIATE) }
 	assert(r2d.init(&s.batch, &s.materials) == "")
+	profiler.profile_init() // update / render 等作用域会列在面板里
+	if font, texture, ok := fonts.load(device); ok {
+		s.font, s.font_texture = font, texture
+		s.perf.corner = .Top_Right
+		s.perf.visible = perf.init(&s.perf, device, &s.font, s.font_texture)
+	}
 	assert(r3d.init(&s.renderer, &s.materials) == "")
 	world.camera3d_init(&s.camera, 1100, 720)
-	world.camera3d_set_position(&s.camera, {0, 1.2, 6})
 	if s.swarm_on {
 		if reason := swarm_init(s, device, s.swarm_count); reason != "" {
 			fail(app, reason)
@@ -149,9 +166,41 @@ startup :: proc(app: ^foster.App) {
 		}
 		fmt.printf("Swarm: %d instances\n", s.swarm.count)
 	}
+	camera_reset(s)
+}
+
+// 默认视角：两个球体从 (0, 1.2, 6) 看向原点；swarm 按立方体边长等比后退。
+camera_reset :: proc(s: ^State) {
+	height, back := f32(1.2), f32(6)
+	if s.swarm_on {
+		factor := max(0.04, math.ceil(math.pow(f32(s.swarm.count), 1.0/3.0)) / 100)
+		height, back = 25*factor, 85*factor
+	}
+	s.yaw, s.pitch = 0, math.atan2(height, back)
+	s.distance = math.sqrt(height*height + back*back)
+	s.focus = {}
+}
+
+camera_input :: proc(s: ^State, mouse: ^foster.MouseState) {
+	position := [2]f32{mouse.Position.X, mouse.Position.Y}
+	delta := position - s.mouse_last // 自己求差：一帧多个移动事件时 Mouse.Delta 只保留最后一个
+	s.mouse_last = position
+	if foster.MouseLeftDown(mouse) {
+		s.yaw -= delta.x * 0.006
+		s.pitch = math.clamp(s.pitch + delta.y*0.006, -1.5, 1.5)
+	}
+	if foster.MouseRightDown(mouse) || foster.MouseMiddleDown(mouse) {
+		// 沿屏幕方向平移焦点，速度随距离缩放。
+		forward := world.camera3d_forward(&s.camera)
+		right := world.camera3d_right(&s.camera)
+		up := linalg.cross(right, forward)
+		s.focus += (up*delta.y - right*delta.x) * (s.distance * 0.0015)
+	}
+	if mouse.Wheel.Y != 0 do s.distance = math.clamp(s.distance*math.pow(f32(0.88), mouse.Wheel.Y), 0.3, 2000)
 }
 
 update :: proc(app: ^foster.App) {
+	profiler.profile_scope("update")
 	s := foster.AppGetUserDataAs(app, State)
 	s.time += f32(app.Time.Delta)
 	keys := &app.Input.State.Keyboard
@@ -159,6 +208,10 @@ update :: proc(app: ^foster.App) {
 	if foster.KeyboardPressed(keys, .Space) do s.outline = !s.outline
 	if foster.KeyboardPressed(keys, .G) do s.grouped = !s.grouped
 	if foster.KeyboardPressed(keys, .V) do s.views = !s.views
+	if foster.KeyboardPressed(keys, .F) do camera_reset(s)
+	if foster.KeyboardPressed(keys, .P) do s.perf.visible = !s.perf.visible
+	perf.frame(&s.perf, f32(app.Time.Delta)) // 隐藏时也记录，打开时历史完整
+	camera_input(s, &app.Input.State.Mouse)
 	if foster.KeyboardPressed(keys, .I) {
 		s.swarm_on = !s.swarm_on
 		if s.swarm_on && !s.swarm.ready {
@@ -168,6 +221,7 @@ update :: proc(app: ^foster.App) {
 			}
 			fmt.printf("Swarm: %d instances\n", s.swarm.count)
 		}
+		camera_reset(s)
 	}
 	if foster.KeyboardPressed(keys, .R) {
 		r3d.clear(&s.renderer) // 重载前释放对材质资源的借用
@@ -178,6 +232,7 @@ update :: proc(app: ^foster.App) {
 }
 
 render :: proc(app: ^foster.App) {
+	profiler.profile_scope("render")
 	s := foster.AppGetUserDataAs(app, State)
 	if s.failed do return
 	start := time.tick_now()
@@ -193,12 +248,10 @@ render :: proc(app: ^foster.App) {
 	colors := [1]foster.Color{{31,38,51,255}}
 	foster.GraphicsDeviceClear(device, target, colors[:], 1, 0, foster.ClearMask.Color | foster.ClearMask.Depth)
 	world.camera3d_set_viewport(&s.camera, w, h)
-	position := [3]f32{0, 1.2, 6}
-	if s.swarm_on {
-		factor := max(0.04, math.ceil(math.pow(f32(s.swarm.count), 1.0/3.0)) / 100)
-		position = {0, 25*factor, 85*factor}
-	}
-	world.camera3d_set_position(&s.camera, position)
+	orbit := [3]f32{math.sin(s.yaw)*math.cos(s.pitch), math.sin(s.pitch), math.cos(s.yaw)*math.cos(s.pitch)}
+	world.camera3d_set_target(&s.camera, s.focus)
+	world.camera3d_set_position(&s.camera, s.focus + orbit*s.distance)
+	world.camera3d_set_far_clip(&s.camera, max(250, s.distance*3)) // 拉远时整群仍在远裁剪面内
 	view := r3d.View{target = target, view_projection = world.camera3d_view_projection(&s.camera),
 		view_matrix = world.camera3d_view(&s.camera), time = s.shot ? 0.8 : s.time}
 	r3d.clear(&s.renderer)
@@ -208,13 +261,15 @@ render :: proc(app: ^foster.App) {
 		error: mat.Draw_Error
 		if s.automatic {
 			// model 与 models 共用同一 instanced 材质，也会合成一批。
-			values := mat.Instance_Values{count = 1, set = 1}
-			values.numbers[0] = s.swarm.values[0]
+			// 平铺数组每个实例连续 slots 个 float4（hue、motion）；首个实例单独用 model 记录。
+			slots := mat.instance_slot_count(s.swarm.material)
+			values := mat.Instance_Values{count = slots, set = 1 << u32(slots) - 1}
+			copy(values.numbers[:slots], s.swarm.values[:slots])
 			error = r3d.model(&s.renderer, &s.swarm.mesh, s.swarm.material,
 				s.swarm.items[0].world, &s.swarm.local_bounds, &values)
 			if error == .None {
 				error = r3d.models(&s.renderer, &s.swarm.mesh, s.swarm.material,
-					s.swarm.items[1:], &s.swarm.local_bounds, s.swarm.values[1:])
+					s.swarm.items[1:], &s.swarm.local_bounds, s.swarm.values[slots:])
 			}
 		} else {
 			error = r3d.buffer(&s.renderer, &s.swarm.mesh, s.swarm.material,
@@ -269,6 +324,8 @@ render :: proc(app: ^foster.App) {
 	r2d.quad_texture(&s.batch, foster.TargetAttachment(&s.target),
 		{0,0}, {f32(w),0}, {f32(w),f32(h)}, {0,f32(h)}, {0,0},{1,0},{1,1},{0,1}, foster.White)
 	r2d.submit(&s.batch, {target = window})
+	// 面板只画到窗口，不进 shot 截图（截图读的是离屏目标）。
+	perf.draw(&s.perf, window, f32(w)/f32(max(1, foster.Size(&app.Window).X)))
 	if s.shot && s.frame >= 10 {
 		s.cpu_sum += time.duration_seconds(time.tick_diff(start, time.tick_now()))
 		s.delta_sum += f64(app.Time.Delta)
@@ -287,6 +344,7 @@ render :: proc(app: ^foster.App) {
 }
 
 submit_scene :: proc(app: ^foster.App, view: r3d.View, pass_id: mat.Pass_Id) -> bool {
+	profiler.profile_scope("r3d.submit")
 	s := foster.AppGetUserDataAs(app, State)
 	start := time.tick_now()
 	error := r3d.submit(&s.renderer, view, pass_id)
@@ -322,6 +380,10 @@ shutdown :: proc(app: ^foster.App) {
 	s := foster.AppGetUserDataAs(app, State)
 	r3d.dispose(&s.renderer)
 	swarm_dispose(s)
+	perf.dispose(&s.perf) // 先释放面板，再释放它借用的字体
+	if s.font_texture.Resource != nil do foster.TextureDispose(&s.font_texture)
+	foster.MsdfFontDispose(&s.font)
+	delete(profiler.profile_stats)
 	r2d.dispose(&s.batch)
 	mat.material_library_dispose(&s.materials)
 	foster.MeshDispose(&s.mesh)
