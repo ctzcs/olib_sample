@@ -82,7 +82,8 @@ startup :: proc(app: ^foster.App) {
 	for arg in os.args do s.shot = s.shot || arg == "shot"
 	if s.shot do foster.TargetInit(&s.capture, &app.GraphicsDevice, 1000, 640)
 	s.materials = {device = &app.GraphicsDevice, storage = &s.resources}
-	if reason := register_materials(&s.materials); reason != "" {
+	// 登记 Shader Lab 产物目录里的材质效果（本例用 SpriteShadow）；只供预览的效果自动跳过。
+	if reason := mat.material_register_directory(&s.materials, #load_directory("../shader_lab/shaders/Compiled")); reason != "" {
 		fail(app, reason)
 		return
 	}

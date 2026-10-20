@@ -28,7 +28,9 @@ View 使用原有 Camera3D 的 view_projection 和 view_matrix；Render3D 不修
 记录复制参数/贴图绑定，submit 不清空；重载或销毁借用资源前必须 clear，退出时先 dispose renderer。
 多 Pass、剔除与排序规则见 [Render3D README](../../../olib/kit/rendering/3d/README.md)。
 
-shaders.odin 初始化时登记一次效果和预编译代码，库负责 Shader、贴图、绑定和统一释放。
+初始化时用 `mat.material_register_directory(&materials, #load_directory("../shader_lab/shaders/Compiled"))`
+一次登记产物目录里的材质效果（只供 Shader Lab 预览的效果自动跳过），库负责 Shader、贴图、绑定和统一释放。
+在 .oshader 里增删 Pass 或效果后只需重新生成 Compiled，不改 Odin 代码。
 material_set_number 影响之后的记录。R 不重编 Shader、不刷新缓存贴图；失败保留原材质。
 
 ## 自动实例化与常驻实例

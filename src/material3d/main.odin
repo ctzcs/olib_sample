@@ -125,11 +125,8 @@ startup :: proc(app: ^foster.App) {
 	s := foster.AppGetUserDataAs(app, State)
 	device := &app.GraphicsDevice
 	s.materials = {device = device, storage = &s.resources}
-	if reason := register_materials(&s.materials); reason != "" {
-		fail(app, reason)
-		return
-	}
-	if reason := register_swarm(&s.materials); reason != "" {
+	// 登记 Shader Lab 产物目录里的材质效果（本例用 Outlined 与 Swarm）；只供预览的效果自动跳过。
+	if reason := mat.material_register_directory(&s.materials, #load_directory("../shader_lab/shaders/Compiled")); reason != "" {
 		fail(app, reason)
 		return
 	}
