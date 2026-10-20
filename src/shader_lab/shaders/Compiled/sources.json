@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "files": [
+    {
+      "path": "Outlined.oshader",
+      "hash": "b72c84bdeda95d83"
+    },
+    {
+      "path": "Palette.hlsli",
+      "hash": "c7d48ea80d62404b"
+    },
+    {
+      "path": "Preview2D.oshader",
+      "hash": "a06614eed1f03c22"
+    },
+    {
+      "path": "Preview3D.oshader",
+      "hash": "927c6a2260c14bb1"
+    },
+    {
+      "path": "SpriteShadow.oshader",
+      "hash": "f74f3f5202bdefca"
+    },
+    {
+      "path": "Swarm.oshader",
+      "hash": "9f8dbd7d91217488"
+    },
+    {
+      "path": "Trail2D.oshader",
+      "hash": "95dbc3074ea3ad91"
+    },
+    {
+      "path": "Trail3D.oshader",
+      "hash": "d2dbdaa8bf46da70"
+    },
+    {
+      "path": "Unified.oshader",
+      "hash": "29afe2e79f107d91"
+    },
+    {
+      "path": "olib/fullscreen.hlsli",
+      "hash": "ec13d55531b78495"
+    },
+    {
+      "path": "olib/model.hlsli",
+      "hash": "3cdccdb1f7cc4ef6"
+    },
+    {
+      "path": "olib/sprite.hlsli",
+      "hash": "d440e8c6b0c1dbe6"
+    }
+  ]
+}

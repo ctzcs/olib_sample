@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "files": [
+    {
+      "path": "EnvironmentUv.hlsli",
+      "hash": "c6862daf141ae61a"
+    },
+    {
+      "path": "Standard3D.hlsl",
+      "hash": "ad1cf1e5346c8e4d"
+    },
+    {
+      "path": "Standard3DCommon.hlsli",
+      "hash": "94dd6a09f3fd875d"
+    },
+    {
+      "path": "Standard3DSkinned.hlsl",
+      "hash": "52bffa5a659e2cef"
+    }
+  ]
+}
