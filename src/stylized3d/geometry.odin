@@ -7,8 +7,8 @@ import dasset "olib:core/dasset"
 
 CUBE_BOUNDS :: dasset.Dasset_Bounds{min = {-0.5, -0.5, -0.5}, max = {0.5, 0.5, 0.5}}
 BALL_BOUNDS :: dasset.Dasset_Bounds{min = {-1, -1, -1}, max = {1, 1, 1}}
-// billboard 在 Shader 里沿相机轴展开成边长为缩放的面片，盒子要包住任意朝向（半对角线约 0.71）。
-COIN_BOUNDS :: dasset.Dasset_Bounds{min = {-0.75, -0.75, -0.75}, max = {0.75, 0.75, 0.75}}
+// 面片（金币、圆影）在 Shader 里沿相机轴展开或平铺到地面，盒子要包住任意朝向（半对角线约 0.71）。
+CARD_BOUNDS :: dasset.Dasset_Bounds{min = {-0.75, -0.75, -0.75}, max = {0.75, 0.75, 0.75}}
 
 // 单位立方体（边长 1，中心在原点），每面 4 个顶点以保留硬边法线。
 cube :: proc() -> dasset.Dasset_Primitive {
@@ -53,7 +53,7 @@ sphere :: proc(rings := 24, segments := 32) -> dasset.Dasset_Primitive {
 	return p
 }
 
-// XY 平面上的单位面片（-0.5..0.5），billboard 在顶点着色器里沿相机轴展开。
+// XY 平面上的单位面片（-0.5..0.5）：金币在顶点着色器里沿相机轴展开，圆影平铺到地面。
 quad :: proc() -> dasset.Dasset_Primitive {
 	p := dasset.Dasset_Primitive{vertices = make([]dasset.Dasset_Vertex, 4), indices = make([]u32, 6)}
 	corners := [4][2]f32{{-0.5, -0.5}, {0.5, -0.5}, {0.5, 0.5}, {-0.5, 0.5}}

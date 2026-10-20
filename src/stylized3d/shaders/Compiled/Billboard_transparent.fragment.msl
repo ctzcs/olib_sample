@@ -22,9 +22,8 @@ struct fragment_main_in
 fragment fragment_main_out fragment_main(fragment_main_in in [[stage_in]], constant type_MaterialParams& MaterialParams [[buffer(1)]])
 {
     fragment_main_out out = {};
-    float _35 = length((in.in_var_TEXCOORD0 * 2.0) - float2(1.0));
-    float _37 = 1.0 - smoothstep(0.819999992847442626953125, 1.0, _35);
-    out.out_var_SV_Target0 = float4((in.in_var_TEXCOORD8.xyz * (1.0 + (MaterialParams._olib_param_0.x * (1.0 - _35)))) + float3((smoothstep(0.550000011920928955078125, 0.7200000286102294921875, _35) * _37) * 0.20000000298023223876953125), _37 * in.in_var_TEXCOORD8.w);
+    float _38 = length(in.in_var_TEXCOORD0);
+    out.out_var_SV_Target0 = float4(((in.in_var_TEXCOORD8.xyz * (0.819999992847442626953125 + (0.300000011920928955078125 * (1.0 - _38)))) * (1.0 - ((smoothstep(0.60000002384185791015625, 0.680000007152557373046875, _38) * (1.0 - smoothstep(0.7400000095367431640625, 0.819999992847442626953125, _38))) * 0.300000011920928955078125))) + float3(fast::clamp(1.0 - (length(in.in_var_TEXCOORD0 - float2(-0.3499999940395355224609375, 0.37999999523162841796875)) * 2.400000095367431640625), 0.0, 1.0) * MaterialParams._olib_param_0.x), (1.0 - smoothstep(0.86000001430511474609375, 1.0, _38)) * in.in_var_TEXCOORD8.w);
     return out;
 }
 

@@ -21,7 +21,7 @@ struct SceneView
 {
     float4 sun_direction;
     float4 sun_color;
-    float4 ambient;
+    float4 shadow;
     float4 fog_color;
     float4 fog;
     float4 camera_right;
@@ -47,20 +47,26 @@ struct fragment_main_in
 fragment fragment_main_out fragment_main(fragment_main_in in [[stage_in]], constant type_FrameBlock& FrameBlock [[buffer(0)]], constant type_MaterialParams& MaterialParams [[buffer(1)]], constant type_FragmentViewBlock& FragmentViewBlock [[buffer(2)]])
 {
     fragment_main_out out = {};
-    bool _75 = FragmentViewBlock.FragmentView.sun_color.w == 0.0;
-    float4 _83;
-    if (_75)
+    float3 _66 = MaterialParams._olib_param_0.xyz * FrameBlock.Tint.xyz;
+    bool _78 = FragmentViewBlock.FragmentView.sun_color.w == 0.0;
+    float4 _86;
+    if (_78)
     {
-        _83 = float4(fast::normalize(float3(-0.449999988079071044921875, -0.800000011920928955078125, -0.4000000059604644775390625)), 0.0);
+        _86 = float4(fast::normalize(float3(-0.449999988079071044921875, -0.800000011920928955078125, -0.4000000059604644775390625)), 0.0);
     }
     else
     {
-        _83 = FragmentViewBlock.FragmentView.sun_direction;
+        _86 = FragmentViewBlock.FragmentView.sun_direction;
     }
-    bool4 _84 = bool4(_75);
-    float4 _87 = select(FragmentViewBlock.FragmentView.fog, float4(0.0, 1.0, 0.0, 0.0), _84);
-    float _103 = _87.x;
-    out.out_var_SV_Target0 = float4(mix((MaterialParams._olib_param_0.xyz * FrameBlock.Tint.xyz) * (select(FragmentViewBlock.FragmentView.ambient, float4(0.319999992847442626953125, 0.36000001430511474609375, 0.519999980926513671875, 1.0), _84).xyz + (select(FragmentViewBlock.FragmentView.sun_color, float4(0.949999988079071044921875, 0.87999999523162841796875, 0.75, 1.0), _84).xyz * smoothstep(-0.07999999821186065673828125, 0.07999999821186065673828125, dot(fast::normalize(in.in_var_TEXCOORD0), -_83.xyz)))), FragmentViewBlock.FragmentView.fog_color.xyz, float3(fast::clamp((length(in.in_var_TEXCOORD1 - FrameBlock.CameraPosition.xyz) - _103) / precise::max(_87.y - _103, 0.001000000047497451305389404296875), 0.0, 1.0) * _87.z)), 1.0);
+    bool4 _87 = bool4(_78);
+    float4 _89 = select(FragmentViewBlock.FragmentView.shadow, float4(0.1599999964237213134765625, 0.20000000298023223876953125, 0.4199999868869781494140625, 0.550000011920928955078125), _87);
+    float4 _90 = select(FragmentViewBlock.FragmentView.fog, float4(0.0, 1.0, 0.0, 0.0), _87);
+    float3 _91 = fast::normalize(in.in_var_TEXCOORD0);
+    float _95 = smoothstep(-0.039999999105930328369140625, 0.0599999986588954925537109375, dot(_91, -_86.xyz));
+    float _119 = _90.x;
+    float _125 = fast::clamp((length(in.in_var_TEXCOORD1 - FrameBlock.CameraPosition.xyz) - _119) / precise::max(_90.y - _119, 0.001000000047497451305389404296875), 0.0, 1.0);
+    float3 _134 = mix(mix(mix(_66, _89.xyz, float3(_89.w)), _66 * select(FragmentViewBlock.FragmentView.sun_color, float4(1.0, 0.959999978542327880859375, 0.87999999523162841796875, 1.0), _87).xyz, float3(_95)) + float3((powr(fast::clamp(1.0 - dot(_91, fast::normalize(FrameBlock.CameraPosition.xyz - in.in_var_TEXCOORD1)), 0.0, 1.0), 3.0) * 0.300000011920928955078125) * _95), FragmentViewBlock.FragmentView.fog_color.xyz, float3(((_125 * _125) * (3.0 - (2.0 * _125))) * _90.z));
+    out.out_var_SV_Target0 = float4(_134, 1.0);
     return out;
 }
 

@@ -1,0 +1,53 @@
+// 贴地圆影（Celeste64 的点阴影）：instanced 面片平放在地面上，颜色取视图块的阴影色，边缘柔和。
+// 半透明、不写深度；位置略高于地面避免与地面争深度。
+Shader "Blob"
+{
+    Label "stylized3d / Blob shadow"
+    Preview 3D
+    Output "color"
+    Instanced
+    Properties
+    {
+        _softness ("Softness", Range(0,1)) = 0.6
+    }
+
+    Pass "transparent"
+    {
+        Label "Shadow"
+        Draw Model
+        Cull None
+        Blend Alpha
+        ZTest Less
+        ZWrite Off
+        HLSLPROGRAM
+        #include "Stylized.hlsli"
+        struct Input {
+            OlibInstanceInput Instance;
+            float3 Position : TEXCOORD0;
+            float3 Normal : TEXCOORD1;
+            float2 Uv : TEXCOORD2;
+            float4 Tangent : TEXCOORD3;
+        };
+        struct Output { float4 Position : SV_Position; float2 Uv : TEXCOORD0; OlibInstance Instance; };
+        Output vertex_main(Input v)
+        {
+            Output o;
+            olib_instance = olib_instance_from(v.Instance);
+            float4x4 world = olib_world(v.Instance);
+            // XY 面片铺到 XZ 平面，宽、深取世界矩阵 X、Z 轴的缩放。
+            float3 position = world[3].xyz + float3(v.Position.x * length(world[0].xyz), 0, -v.Position.y * length(world[2].xyz));
+            o.Position = mul(float4(position, 1), Wvp); // instanced：Wvp 即 ViewProjection
+            o.Uv = v.Position.xy * 2;
+            o.Instance = olib_instance;
+            return o;
+        }
+        float4 fragment_main(Output v) : SV_Target0
+        {
+            olib_instance = v.Instance;
+            SceneView view = scene_view(FragmentView);
+            float alpha = (1 - smoothstep(1 - _softness, 1, length(v.Uv))) * InstanceTint.a;
+            return float4(view.shadow.rgb * 0.55, alpha);
+        }
+        ENDHLSL
+    }
+}

@@ -7,8 +7,9 @@ Shader "Sky"
     Output "color"
     Properties
     {
-        _zenith ("Zenith", Color) = (0.30,0.46,0.82,1)
-        _horizon ("Horizon", Color) = (0.82,0.88,0.96,1)
+        _zenith ("Zenith", Color) = (0.34,0.52,0.88,1)
+        // 地平线颜色与 main.odin 的雾色相同，远处地面融进天空。
+        _horizon ("Horizon", Color) = (0.84,0.90,0.98,1)
     }
 
     Pass "sky"
@@ -33,7 +34,7 @@ Shader "Sky"
         {
             SceneView view = scene_view(FragmentView);
             float3 direction = normalize(v.Direction);
-            float3 color = lerp(_horizon.rgb, _zenith.rgb, saturate(direction.y * 1.6 + 0.05));
+            float3 color = lerp(_horizon.rgb, _zenith.rgb, saturate(direction.y * 1.6));
             float sun = smoothstep(0.9965, 0.9985, dot(direction, -view.sun_direction.xyz));
             return float4(color + view.sun_color.rgb * sun, 1);
         }

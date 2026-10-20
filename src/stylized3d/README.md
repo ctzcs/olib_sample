@@ -4,22 +4,26 @@
 用 Render3D 验收三项机制。几何是程序生成的方块和球，资产与代码都不取自 Celeste64。
 光照、雾和描边的外观都在 `shaders/` 里，属于本示例；olib 只提供下面这些机制。
 
-- 空格：暂停；E：开关深度描边；Esc：退出。
+- 空格：暂停；E：开关深度描边；Esc：退出。窗口可任意缩放。
 - `shot` 用固定时间画一帧，把最终合成（含 UI）写到 `library/screenshots/stylized3d.png` 后退出；
-  `shot flat` 关掉描边，写 `stylized3d_flat.png` 便于对比。`SDL_GPU_DRIVER=vulkan` / `direct3d12` 选后端。
+  `shot flat` 关掉描边，写 `stylized3d_flat.png` 便于对比；`size=1366x768` 指定窗口尺寸。
+  `SDL_GPU_DRIVER=vulkan` / `direct3d12` 选后端。
 
 ## 一帧
 
-1. 640×360 场景 Target（颜色 + 单采样 Depth32），整数倍最近邻放大。
+1. 场景 Target（颜色 + 单采样 Depth32）约 360 像素高：按窗口高度取整数放大倍数，宽高向上取整铺满窗口，
+   最近邻放大后多出的不足一个放大像素被裁掉，任何窗口尺寸都没有黑边。窗口变化时重建目标并重新绑定深度贴图。
 2. 同一份记录按 Pass id 分阶段提交：`sky` → `scene` → `silhouette` → `body`。
    剪影（`ZTest Greater`、不写深度）要在遮挡物写完深度之后、角色本体写深度之前画，
    否则会叠到角色自己被挡住的部位上。场景材质与角色用不同的 Pass id，才能把两者拆开提交。
 3. 深度描边：Render2D 用 DepthEdge 材质把场景颜色画到 post，材质里的 `_depth` 由
    `material_set_texture` 绑定场景的深度附件。深度附件不能在仍是当前深度目标时采样，
-   所以先画到另一张 Target，再拷回场景，场景深度留给后面的半透明面片。
-4. `transparent`：金币面片沿视图块里的相机轴展开，读场景深度、不写深度。
-5. 小地图：同一份记录提交给俯视相机，视图块不同（不加雾、相机轴不同），面片朝向俯视相机。
-6. 合成在最终窗口像素尺寸进行；小地图与 HUD 不随低分辨率场景放大。
+   所以先画到另一张 Target，再拷回场景，场景深度留给后面的半透明物体。
+4. `transparent`：贴地圆影（Blob）与金币（Billboard，沿视图块里的相机轴展开），读场景深度、不写深度。
+5. 小地图：同一份记录提交给俯视相机，视图块不同（不加雾、相机轴不同），金币朝向俯视相机。
+6. 合成在最终窗口像素尺寸进行；小地图与 HUD 贴窗口角落，按窗口高度相对 720 缩放，不随低分辨率场景放大。
+
+外观（属于示例）：背光面混向偏蓝紫的阴影色而不是变黑，掠射角加轮廓光；雾色与天空地平线相同，远处地面融进天空。
 
 ## 视图块
 
@@ -27,7 +31,7 @@
 本示例的布局是 `main.odin` 的 `Scene_View`，与 `shaders/Stylized.hlsli` 的 `SceneView` 一一对应：
 
 ```odin
-globals := scene_view(&camera, fog = 0.85) // 太阳、雾、相机轴
+globals := scene_view(&camera, fog = 1) // 太阳、阴影色、雾、相机轴
 view := r3d.View{target = scene, view_projection = world.camera3d_view_projection(&camera),
 	view_matrix = world.camera3d_view(&camera), globals = mem.ptr_to_bytes(&globals)}
 err := r3d.submit(&renderer, view, "scene")

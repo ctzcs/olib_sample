@@ -8,8 +8,9 @@ Shader "Hero"
     Output "color"
     Properties
     {
-        _color ("Color", Color) = (0.86,0.27,0.32,1)
-        _silhouette ("Silhouette", Color) = (0.36,0.56,1,1)
+        // 身体、头、头发的颜色走 models 每项的 tint。
+        _color ("Color", Color) = (1,1,1,1)
+        _silhouette ("Silhouette", Color) = (0.48,0.84,1,1)
     }
 
     Pass "silhouette"

@@ -15,7 +15,7 @@ struct SceneView
 {
     float4 sun_direction;
     float4 sun_color;
-    float4 ambient;
+    float4 shadow;
     float4 fog_color;
     float4 fog;
     float4 camera_right;
@@ -47,10 +47,10 @@ struct vertex_main_in
 vertex vertex_main_out vertex_main(vertex_main_in in [[stage_in]], constant type_MatrixBlock& MatrixBlock [[buffer(0)]], constant type_VertexViewBlock& VertexViewBlock [[buffer(1)]])
 {
     vertex_main_out out = {};
-    bool4 _63 = bool4(VertexViewBlock.VertexView.sun_color.w == 0.0);
-    float4x4 _67 = transpose(float4x4(in.in_var_TEXCOORD6, in.in_var_TEXCOORD7, in.in_var_TEXCOORD8, in.in_var_TEXCOORD9));
-    out.gl_Position = float4(_67[3].xyz + (((select(VertexViewBlock.VertexView.camera_right, float4(1.0, 0.0, 0.0, 0.0), _63).xyz * in.in_var_TEXCOORD0.x) + (select(VertexViewBlock.VertexView.camera_up, float4(0.0, 1.0, 0.0, 0.0), _63).xyz * in.in_var_TEXCOORD0.y)) * length(_67[0].xyz)), 1.0) * MatrixBlock.Wvp;
-    out.out_var_TEXCOORD0 = in.in_var_TEXCOORD0.xy + float2(0.5);
+    bool4 _62 = bool4(VertexViewBlock.VertexView.sun_color.w == 0.0);
+    float4x4 _66 = transpose(float4x4(in.in_var_TEXCOORD6, in.in_var_TEXCOORD7, in.in_var_TEXCOORD8, in.in_var_TEXCOORD9));
+    out.gl_Position = float4(_66[3].xyz + (((select(VertexViewBlock.VertexView.camera_right, float4(1.0, 0.0, 0.0, 0.0), _62).xyz * in.in_var_TEXCOORD0.x) + (select(VertexViewBlock.VertexView.camera_up, float4(0.0, 1.0, 0.0, 0.0), _62).xyz * in.in_var_TEXCOORD0.y)) * length(_66[0].xyz)), 1.0) * MatrixBlock.Wvp;
+    out.out_var_TEXCOORD0 = in.in_var_TEXCOORD0.xy * 2.0;
     out.out_var_TEXCOORD8 = in.in_var_TEXCOORD10;
     return out;
 }

@@ -74,6 +74,20 @@ register_effects :: proc(library: ^mat.Material_Library) -> string {
 			},
 		},
 	}
+	blob := [?]mat.Pass_Binaries{
+		{
+			vertex = {
+				spv = #load("shaders/Compiled/Blob_transparent.vertex.spv"),
+				dxil = #load("shaders/Compiled/Blob_transparent.vertex.dxil"),
+				msl = #load("shaders/Compiled/Blob_transparent.vertex.msl"),
+			},
+			fragment = {
+				spv = #load("shaders/Compiled/Blob_transparent.fragment.spv"),
+				dxil = #load("shaders/Compiled/Blob_transparent.fragment.dxil"),
+				msl = #load("shaders/Compiled/Blob_transparent.fragment.msl"),
+			},
+		},
+	}
 	edge := [?]mat.Pass_Binaries{
 		{
 			vertex = {
@@ -92,5 +106,6 @@ register_effects :: proc(library: ^mat.Material_Library) -> string {
 	if reason := mat.material_register_manifest(library, #load("shaders/Compiled/Hero.shader.json"), hero[:]); reason != "" do return reason
 	if reason := mat.material_register_manifest(library, #load("shaders/Compiled/Sky.shader.json"), sky[:]); reason != "" do return reason
 	if reason := mat.material_register_manifest(library, #load("shaders/Compiled/Billboard.shader.json"), billboard[:]); reason != "" do return reason
+	if reason := mat.material_register_manifest(library, #load("shaders/Compiled/Blob.shader.json"), blob[:]); reason != "" do return reason
 	return mat.material_register_manifest(library, #load("shaders/Compiled/DepthEdge.shader.json"), edge[:])
 }
