@@ -27,12 +27,7 @@ Shader "Trail3D"
         Input _source "blur_y" Current
         Input _history "result" Previous
         HLSLPROGRAM
-cbuffer ViewBlock : register(b0, space1) { float4 View; };
-cbuffer PreviewBlock : register(b0, space3) {
-    float4 Clock; // time, delta time, frame index, sprite flag
-    float4 Pointer;
-    float4 Tint;
-};
+#include "olib/fullscreen.hlsli"
 struct Input { float2 Position : TEXCOORD0; float2 Uv : TEXCOORD1; };
 struct Output { float4 Position : SV_Position; float2 Uv : TEXCOORD0; };
 Output vertex_main(Input v) {
@@ -59,13 +54,8 @@ float4 fragment_main(Output v) : SV_Target0 {
         Target { Format Float16 }
         HLSLPROGRAM
 #include "Palette.hlsli"
-// Vertex b0: matrices. Fragment b0: engine inputs; b1/textures: generated parameters.
-cbuffer MatrixBlock : register(b0, space1) { float4x4 Wvp; float4x4 World; };
-cbuffer PreviewBlock : register(b0, space3) {
-    float4 Clock;
-    float4 Pointer;
-    float4 Tint;
-};
+// Engine blocks (vertex b0 matrices, fragment b0 inputs): olib/model.hlsli; b1/textures: generated parameters.
+#include "olib/model.hlsli"
 struct Input {
     float3 Position : TEXCOORD0;
     float3 Normal : TEXCOORD1;
@@ -106,12 +96,7 @@ float4 fragment_main(Output v) : SV_Target0
         Value _direction (1,0)
         Target { Scale 0.5 Format Float16 }
         HLSLPROGRAM
-cbuffer ViewBlock : register(b0, space1) { float4 View; };
-cbuffer PreviewBlock : register(b0, space3) {
-    float4 Clock;
-    float4 Pointer;
-    float4 Tint;
-};
+#include "olib/fullscreen.hlsli"
 struct Input { float2 Position : TEXCOORD0; float2 Uv : TEXCOORD1; };
 struct Output { float4 Position : SV_Position; float2 Uv : TEXCOORD0; };
 Output vertex_main(Input v) {
@@ -143,12 +128,7 @@ float4 fragment_main(Output v) : SV_Target0 {
         Value _direction (0,1)
         Target { Scale 0.5 Format Float16 }
         HLSLPROGRAM
-cbuffer ViewBlock : register(b0, space1) { float4 View; };
-cbuffer PreviewBlock : register(b0, space3) {
-    float4 Clock;
-    float4 Pointer;
-    float4 Tint;
-};
+#include "olib/fullscreen.hlsli"
 struct Input { float2 Position : TEXCOORD0; float2 Uv : TEXCOORD1; };
 struct Output { float4 Position : SV_Position; float2 Uv : TEXCOORD0; };
 Output vertex_main(Input v) {

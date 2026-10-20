@@ -3,10 +3,12 @@
 
 using namespace metal;
 
-struct type_MatrixBlock
+struct type_OlibVertex
 {
     float4x4 Wvp;
     float4x4 World;
+    float4 VertexClock;
+    float4 VertexCameraPosition;
 };
 
 struct vertex_main_out
@@ -23,11 +25,11 @@ struct vertex_main_in
     float2 in_var_TEXCOORD2 [[attribute(2)]];
 };
 
-vertex vertex_main_out vertex_main(vertex_main_in in [[stage_in]], constant type_MatrixBlock& MatrixBlock [[buffer(0)]])
+vertex vertex_main_out vertex_main(vertex_main_in in [[stage_in]], constant type_OlibVertex& OlibVertex [[buffer(0)]])
 {
     vertex_main_out out = {};
-    out.gl_Position = float4(in.in_var_TEXCOORD0, 1.0) * MatrixBlock.Wvp;
-    out.out_var_TEXCOORD0 = float3x3(float4(MatrixBlock.World[0][0], MatrixBlock.World[1][0], MatrixBlock.World[2][0], MatrixBlock.World[3][0]).xyz, float4(MatrixBlock.World[0][1], MatrixBlock.World[1][1], MatrixBlock.World[2][1], MatrixBlock.World[3][1]).xyz, float4(MatrixBlock.World[0][2], MatrixBlock.World[1][2], MatrixBlock.World[2][2], MatrixBlock.World[3][2]).xyz) * in.in_var_TEXCOORD1;
+    out.gl_Position = float4(in.in_var_TEXCOORD0, 1.0) * OlibVertex.Wvp;
+    out.out_var_TEXCOORD0 = float3x3(float4(OlibVertex.World[0][0], OlibVertex.World[1][0], OlibVertex.World[2][0], OlibVertex.World[3][0]).xyz, float4(OlibVertex.World[0][1], OlibVertex.World[1][1], OlibVertex.World[2][1], OlibVertex.World[3][1]).xyz, float4(OlibVertex.World[0][2], OlibVertex.World[1][2], OlibVertex.World[2][2], OlibVertex.World[3][2]).xyz) * in.in_var_TEXCOORD1;
     out.out_var_TEXCOORD1 = in.in_var_TEXCOORD2;
     return out;
 }

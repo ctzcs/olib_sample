@@ -13,7 +13,7 @@ struct type_OlibSpritePass
     uint _olib_pass_offset;
 };
 
-struct type_ViewBlock
+struct type_OlibVertex
 {
     float4x4 Projection;
     float4 VertexClock;
@@ -37,15 +37,15 @@ struct vertex_main_in
     float4 in_var_TEXCOORD3 [[attribute(3)]];
 };
 
-vertex vertex_main_out vertex_main(vertex_main_in in [[stage_in]], constant type_ViewBlock& ViewBlock [[buffer(0)]], constant type_OlibSpritePass& OlibSpritePass [[buffer(1)]], const device type_StructuredBuffer_v4float& OlibInstanceValues [[buffer(2)]])
+vertex vertex_main_out vertex_main(vertex_main_in in [[stage_in]], constant type_OlibVertex& OlibVertex [[buffer(0)]], constant type_OlibSpritePass& OlibSpritePass [[buffer(1)]], const device type_StructuredBuffer_v4float& OlibInstanceValues [[buffer(2)]])
 {
     vertex_main_out out = {};
     uint4 _59 = uint4(rint(in.in_var_TEXCOORD3 * 255.0));
     uint _69 = ((_59.x | (_59.y << 8u)) | (_59.z << 16u)) | (_59.w << 24u);
     uint _75 = _69 + (1u + OlibSpritePass._olib_pass_offset);
     uint _81 = _75 + 2u;
-    float _98 = (ViewBlock.VertexClock.x * OlibInstanceValues._m0[_81].y) + OlibInstanceValues._m0[_81].x;
-    out.gl_Position = ViewBlock.Projection * float4(in.in_var_TEXCOORD0 + ((float2(cos(_98), 0.60000002384185791015625 * sin(_98 * 1.7000000476837158203125)) * OlibInstanceValues._m0[_81].z) * sqrt(abs((OlibInstanceValues._m0[_69].x * OlibInstanceValues._m0[_69].w) - (OlibInstanceValues._m0[_69].y * OlibInstanceValues._m0[_69].z)))), 0.0, 1.0);
+    float _98 = (OlibVertex.VertexClock.x * OlibInstanceValues._m0[_81].y) + OlibInstanceValues._m0[_81].x;
+    out.gl_Position = OlibVertex.Projection * float4(in.in_var_TEXCOORD0 + ((float2(cos(_98), 0.60000002384185791015625 * sin(_98 * 1.7000000476837158203125)) * OlibInstanceValues._m0[_81].z) * sqrt(abs((OlibInstanceValues._m0[_69].x * OlibInstanceValues._m0[_69].w) - (OlibInstanceValues._m0[_69].y * OlibInstanceValues._m0[_69].z)))), 0.0, 1.0);
     out.out_var_TEXCOORD0 = in.in_var_TEXCOORD1;
     out.out_var_TEXCOORD8 = in.in_var_TEXCOORD2;
     out.out_var_TEXCOORD9 = OlibInstanceValues._m0[_75];

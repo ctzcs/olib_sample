@@ -26,12 +26,7 @@ Shader "SpriteShadow"
 
         // 2D 精灵统一顶点接口：olib_sprite 给出目标像素位置、UV（含图集区域）、精灵局部的两条轴与传给片元的 tint、[Instance] 字段。
         // 逐个绘制（Render2D）与常驻缓冲（r2d.buffer）由工具编译成两种变体，这里的代码不用区分。
-        cbuffer ViewBlock : register(b0, space1) { float4x4 Projection; float4 VertexClock; };
-        cbuffer FrameBlock : register(b0, space3) {
-            float4 Clock;
-            float4 Pointer;
-            float4 Tint;
-        };
+        #include "olib/sprite.hlsli"
         struct Input { OlibSpriteInput Sprite; };
         struct Output { float4 Position : SV_Position; float2 Uv : TEXCOORD0; OlibInstance Instance; };
         Output vertex_main(Input v)
@@ -80,12 +75,7 @@ Shader "SpriteShadow"
 
 // 2D 精灵统一顶点接口：olib_sprite 给出目标像素位置、UV（含图集区域）、精灵局部的两条轴与传给片元的 tint、[Instance] 字段。
 // 逐个绘制（Render2D）与常驻缓冲（r2d.buffer）由工具编译成两种变体，这里的代码不用区分。
-cbuffer ViewBlock : register(b0, space1) { float4x4 Projection; float4 VertexClock; };
-cbuffer FrameBlock : register(b0, space3) {
-    float4 Clock;
-    float4 Pointer;
-    float4 Tint;
-};
+#include "olib/sprite.hlsli"
 struct Input { OlibSpriteInput Sprite; };
 struct Output { float4 Position : SV_Position; float2 Uv : TEXCOORD0; OlibInstance Instance; };
 Output vertex_main(Input v)

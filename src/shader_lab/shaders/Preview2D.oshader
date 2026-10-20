@@ -20,13 +20,8 @@ Shader "Preview2D"
         Target { Clear (0.06666667,0.08235294,0.10196079,1) }
         HLSLPROGRAM
 #include "Palette.hlsli"
-// Vertex b0: view. Fragment b0: engine inputs; b1/textures: generated parameters.
-cbuffer ViewBlock : register(b0, space1) { float4 View; };
-cbuffer PreviewBlock : register(b0, space3) {
-    float4 Clock; // time, unused, unused, sprite mode
-    float4 Pointer; // mouse UV, viewport pixels
-    float4 Tint;
-};
+// Engine blocks (vertex b0 view, fragment b0 inputs): olib/fullscreen.hlsli; b1/textures: generated parameters.
+#include "olib/fullscreen.hlsli"
 struct Input { float2 Position : TEXCOORD0; float2 Uv : TEXCOORD1; };
 struct Output { float4 Position : SV_Position; float2 Uv : TEXCOORD0; };
 Output vertex_main(Input v)

@@ -14,12 +14,7 @@ Shader "Unified"
 	}
 
 	HLSLINCLUDE
-	cbuffer ViewBlock : register(b0, space1) { float4 View; };
-	cbuffer PreviewBlock : register(b0, space3) {
-		float4 Clock;
-		float4 Pointer;
-		float4 Tint;
-	};
+	#include "olib/fullscreen.hlsli"
 	struct Input { float2 Position : TEXCOORD0; float2 Uv : TEXCOORD1; };
 	struct Output { float4 Position : SV_Position; float2 Uv : TEXCOORD0; };
 	Output vertex_main(Input v)

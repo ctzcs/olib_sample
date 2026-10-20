@@ -24,14 +24,8 @@ Shader "Swarm"
         Target { Clear (0.12,0.15,0.20,1) }
         HLSLPROGRAM
         #include "Palette.hlsli"
-        // Vertex b0: ViewProjection、单位矩阵（世界矩阵来自实例）、Clock。Fragment b0: 引擎输入。
-        // 两个阶段的 cbuffer 在同一份源码里，顶点侧的 Clock 换个名字避免重名。
-        cbuffer ViewBlock : register(b0, space1) { float4x4 ViewProjection; float4x4 Unused; float4 VertexClock; };
-        cbuffer PreviewBlock : register(b0, space3) {
-            float4 Clock;
-            float4 Pointer;
-            float4 Tint;
-        };
+        // 引擎块：instanced 时 World 为单位矩阵、Wvp 即 ViewProjection，世界矩阵来自实例；顶点侧时间是 VertexClock。
+        #include "olib/model.hlsli"
         // OlibInstanceInput 必须是第一个成员；网格属性随后依次声明。
         struct Input {
             OlibInstanceInput Instance;
@@ -56,7 +50,7 @@ Shader "Swarm"
             float3 offset = float3(cos(t), 0.6 * sin(t * 1.7), sin(t)) * _motion.z;
             float4 position = mul(float4(v.Position, 1), world);
             position.xyz += offset;
-            o.Position = mul(position, ViewProjection);
+            o.Position = mul(position, Wvp);
             o.Normal = mul(v.Normal, (float3x3)world);
             o.Instance = olib_instance;
             return o;

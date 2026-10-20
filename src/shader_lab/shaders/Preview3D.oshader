@@ -20,13 +20,8 @@ Shader "Preview3D"
         Target { Clear (0.06666667,0.08235294,0.10196079,1) }
         HLSLPROGRAM
 #include "Palette.hlsli"
-// Vertex b0: matrices. Fragment b0: engine inputs; b1/textures: generated parameters.
-cbuffer MatrixBlock : register(b0, space1) { float4x4 Wvp; float4x4 World; };
-cbuffer PreviewBlock : register(b0, space3) {
-    float4 Clock;
-    float4 Pointer;
-    float4 Tint;
-};
+// Engine blocks (vertex b0 matrices, fragment b0 inputs): olib/model.hlsli; b1/textures: generated parameters.
+#include "olib/model.hlsli"
 struct Input {
     float3 Position : TEXCOORD0;
     float3 Normal : TEXCOORD1;
