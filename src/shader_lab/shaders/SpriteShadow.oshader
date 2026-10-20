@@ -10,6 +10,8 @@ Shader "SpriteShadow"
         // [Instance] 字段随每个精灵的顶点传入：不同 hue / opacity 的精灵仍可合成一次 Draw。
         [Instance] _hue ("Hue", Range(0,1)) = 0.15
         [Instance] _opacity ("Opacity", Range(0,1)) = 1
+        // x 相位（弧度）、y 角速度（弧度/秒）、z 环绕半径（精灵局部像素，随精灵缩放）
+        [Instance] _motion ("Motion", Vector3(0,256)) = (0,1.5,24)
     }
 
     Pass "shadow"
@@ -19,44 +21,51 @@ Shader "SpriteShadow"
         SpriteTexture _image
         Target { Clear (0.12,0.15,0.20,1) }
         HLSLPROGRAM
-#define SPRITE_SHADOW 1
-#include "Palette.hlsli"
+        #define SPRITE_SHADOW 1
+        #include "Palette.hlsli"
 
-// 2D 精灵统一顶点接口：olib_sprite 给出目标像素位置、UV（含图集区域）与传给片元的 tint、[Instance] 字段。
-// 逐个绘制（Render2D）与常驻缓冲（r2d.buffer）由工具编译成两种变体，这里的代码不用区分。
-cbuffer ViewBlock : register(b0, space1) { float4x4 Projection; };
-cbuffer FrameBlock : register(b0, space3) {
-    float4 Clock;
-    float4 Pointer;
-    float4 Tint;
-};
-struct Input { OlibSpriteInput Sprite; };
-struct Output { float4 Position : SV_Position; float2 Uv : TEXCOORD0; OlibInstance Instance; };
-Output vertex_main(Input v)
-{
-    Output o;
-    OlibSprite s = olib_sprite(v.Sprite);
-    o.Position = mul(Projection, float4(s.position, 0, 1));
-    o.Uv = s.uv;
-    o.Instance = s.instance;
-    // Shadow geometry shares the frame UV, so atlas neighbours cannot bleed in.
-#ifdef SPRITE_SHADOW
-    o.Position.xy += float2(Projection[0][0], Projection[1][1]) * 12;
-#endif
-    return o;
-}
-float4 fragment_main(Output v) : SV_Target0
-{
-    olib_instance = v.Instance;
-    float4 tex = _image.Sample(_imageSampler, v.Uv);
-    float opacity = _opacity * InstanceTint.a;
-    float3 rgb = tex.rgb * palette(_hue) * InstanceTint.rgb;
-#ifdef SPRITE_SHADOW
-    return float4(float3(0.02, 0.03, 0.06) * tex.a * opacity * 0.65, tex.a * opacity * 0.65);
-#else
-    return float4(rgb * opacity, tex.a * opacity);
-#endif
-}
+        // 2D 精灵统一顶点接口：olib_sprite 给出目标像素位置、UV（含图集区域）、精灵局部的两条轴与传给片元的 tint、[Instance] 字段。
+        // 逐个绘制（Render2D）与常驻缓冲（r2d.buffer）由工具编译成两种变体，这里的代码不用区分。
+        cbuffer ViewBlock : register(b0, space1) { float4x4 Projection; float4 VertexClock; };
+        cbuffer FrameBlock : register(b0, space3) {
+            float4 Clock;
+            float4 Pointer;
+            float4 Tint;
+        };
+        struct Input { OlibSpriteInput Sprite; };
+        struct Output { float4 Position : SV_Position; float2 Uv : TEXCOORD0; OlibInstance Instance; };
+        Output vertex_main(Input v)
+        {
+            Output o;
+            OlibSprite s = olib_sprite(v.Sprite);
+            olib_instance = s.instance;
+            // 精灵局部 1 像素在屏幕上的长度：运动半径和阴影距离都按它换算，精灵多大、相机怎么缩放比例都一致。
+            float scale = sqrt(abs(s.axis_x.x * s.axis_y.y - s.axis_x.y * s.axis_y.x));
+            // 绕静止位置转圈并上下起伏；相位、角速度、半径来自 _motion，CPU 只在加载时写一次，每帧只传时间。
+            float t = VertexClock.x * _motion.y + _motion.x;
+            float2 position = s.position + float2(cos(t), 0.6 * sin(t * 1.7)) * _motion.z * scale;
+            // 阴影几何沿用同一帧 UV，图集相邻区域不会渗进来；偏移固定朝右下（光照方向不随精灵旋转），
+            // 距离是精灵局部 16 像素。
+        #ifdef SPRITE_SHADOW
+            position += float2(1, 1) * 16 * scale;
+        #endif
+            o.Position = mul(Projection, float4(position, 0, 1));
+            o.Uv = s.uv;
+            o.Instance = s.instance;
+            return o;
+        }
+        float4 fragment_main(Output v) : SV_Target0
+        {
+            olib_instance = v.Instance;
+            float4 tex = _image.Sample(_imageSampler, v.Uv);
+            float opacity = _opacity * InstanceTint.a;
+            float3 rgb = tex.rgb * palette(_hue) * InstanceTint.rgb;
+        #ifdef SPRITE_SHADOW
+            return float4(float3(0.02, 0.03, 0.06) * tex.a * opacity * 0.65, tex.a * opacity * 0.65);
+        #else
+            return float4(rgb * opacity, tex.a * opacity);
+        #endif
+        }
         ENDHLSL
     }
 
@@ -69,9 +78,9 @@ float4 fragment_main(Output v) : SV_Target0
         HLSLPROGRAM
 #include "Palette.hlsli"
 
-// 2D 精灵统一顶点接口：olib_sprite 给出目标像素位置、UV（含图集区域）与传给片元的 tint、[Instance] 字段。
+// 2D 精灵统一顶点接口：olib_sprite 给出目标像素位置、UV（含图集区域）、精灵局部的两条轴与传给片元的 tint、[Instance] 字段。
 // 逐个绘制（Render2D）与常驻缓冲（r2d.buffer）由工具编译成两种变体，这里的代码不用区分。
-cbuffer ViewBlock : register(b0, space1) { float4x4 Projection; };
+cbuffer ViewBlock : register(b0, space1) { float4x4 Projection; float4 VertexClock; };
 cbuffer FrameBlock : register(b0, space3) {
     float4 Clock;
     float4 Pointer;
@@ -83,13 +92,20 @@ Output vertex_main(Input v)
 {
     Output o;
     OlibSprite s = olib_sprite(v.Sprite);
-    o.Position = mul(Projection, float4(s.position, 0, 1));
+    olib_instance = s.instance;
+    // 精灵局部 1 像素在屏幕上的长度：运动半径和阴影距离都按它换算，精灵多大、相机怎么缩放比例都一致。
+    float scale = sqrt(abs(s.axis_x.x * s.axis_y.y - s.axis_x.y * s.axis_y.x));
+    // 绕静止位置转圈并上下起伏；相位、角速度、半径来自 _motion，CPU 只在加载时写一次，每帧只传时间。
+    float t = VertexClock.x * _motion.y + _motion.x;
+    float2 position = s.position + float2(cos(t), 0.6 * sin(t * 1.7)) * _motion.z * scale;
+    // 阴影几何沿用同一帧 UV，图集相邻区域不会渗进来；偏移固定朝右下（光照方向不随精灵旋转），
+    // 距离是精灵局部 16 像素。
+#ifdef SPRITE_SHADOW
+    position += float2(1, 1) * 16 * scale;
+#endif
+    o.Position = mul(Projection, float4(position, 0, 1));
     o.Uv = s.uv;
     o.Instance = s.instance;
-    // Shadow geometry shares the frame UV, so atlas neighbours cannot bleed in.
-#ifdef SPRITE_SHADOW
-    o.Position.xy += float2(Projection[0][0], Projection[1][1]) * 12;
-#endif
     return o;
 }
 float4 fragment_main(Output v) : SV_Target0

@@ -1,5 +1,6 @@
-// 大批量实例化的模型：每个实例的世界矩阵、tint 和 hue 都来自实例缓冲（Instance_Buffer），
-// 一次 Draw 画出全部实例。顶点接口见 olib kit/rendering/shader/lang 的 instanced 约定。
+// 大批量实例化的模型：每个实例的世界矩阵、tint、hue 和运动参数都来自常驻实例缓冲，
+// 一次 Draw 画出全部实例。缓冲加载后不再改写：每帧的运动由顶点着色器按 Clock 计算，
+// CPU 只传时间。顶点接口见 olib kit/rendering/shader/lang 的 instanced 约定。
 Shader "Swarm"
 {
     Label "模型实例化 / 大批量"
@@ -8,6 +9,8 @@ Shader "Swarm"
     Properties
     {
         [Instance] _hue ("Hue", Range(0,1)) = 0.15
+        // x 相位（弧度）、y 角速度（弧度/秒）、z 环绕半径（世界单位）
+        [Instance] _motion ("Motion", Vector3(0,7)) = (0,1,0.15)
     }
 
     Pass "body"
@@ -21,8 +24,9 @@ Shader "Swarm"
         Target { Clear (0.12,0.15,0.20,1) }
         HLSLPROGRAM
         #include "Palette.hlsli"
-        // Vertex b0: ViewProjection（世界矩阵来自实例）。Fragment b0: 引擎输入。
-        cbuffer ViewBlock : register(b0, space1) { float4x4 ViewProjection; float4x4 Unused; };
+        // Vertex b0: ViewProjection、单位矩阵（世界矩阵来自实例）、Clock。Fragment b0: 引擎输入。
+        // 两个阶段的 cbuffer 在同一份源码里，顶点侧的 Clock 换个名字避免重名。
+        cbuffer ViewBlock : register(b0, space1) { float4x4 ViewProjection; float4x4 Unused; float4 VertexClock; };
         cbuffer PreviewBlock : register(b0, space3) {
             float4 Clock;
             float4 Pointer;
@@ -45,10 +49,16 @@ Shader "Swarm"
         Output vertex_main(Input v)
         {
             Output o;
+            olib_instance = olib_instance_from(v.Instance);
             float4x4 world = olib_world(v.Instance);
-            o.Position = mul(mul(float4(v.Position, 1), world), ViewProjection);
+            // 每个实例绕自己的静止位置转圈并上下起伏；相位、速度、半径各不相同，所以全部都在动。
+            float t = VertexClock.x * _motion.y + _motion.x;
+            float3 offset = float3(cos(t), 0.6 * sin(t * 1.7), sin(t)) * _motion.z;
+            float4 position = mul(float4(v.Position, 1), world);
+            position.xyz += offset;
+            o.Position = mul(position, ViewProjection);
             o.Normal = mul(v.Normal, (float3x3)world);
-            o.Instance = olib_instance_from(v.Instance);
+            o.Instance = olib_instance;
             return o;
         }
         float4 fragment_main(Output v) : SV_Target0
