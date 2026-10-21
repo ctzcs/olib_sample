@@ -42,12 +42,20 @@
       "hash": "ec13d55531b78495"
     },
     {
+      "path": "olib/instance.hlsli",
+      "hash": "f24daeff022bf82a"
+    },
+    {
       "path": "olib/model.hlsli",
       "hash": "b80c33d8334ac722"
     },
     {
       "path": "olib/sprite.hlsli",
       "hash": "bddea0ee037a6ec4"
+    },
+    {
+      "path": "olib/sprite_vertex.hlsli",
+      "hash": "97b96b858b251d71"
     }
   ]
 }
