@@ -7,7 +7,6 @@ import "core:strings"
 
 import foster "olib:foster"
 import lab "olib:kit/tools/shader_lab"
-import clay "olib:thirdparty/clay-odin"
 import SDL "vendor:sdl3"
 
 prepare_smoke :: proc(s: ^State) -> bool {
@@ -100,11 +99,11 @@ select_parameter_shader :: proc(s: ^State, parameter: int) {
 }
 
 capture :: proc(s: ^State, label: string) {
-	bytes := foster.TextureDownloadData(foster.TargetAttachment(&s.output))
+	bytes := foster.TextureDownloadData(foster.TargetAttachment(s.final))
 	defer delete(bytes)
-	check(s, len(bytes) == s.output.Width*s.output.Height*4, "final output readback")
-	if len(bytes) != s.output.Width*s.output.Height*4 do return
-	image := foster.ImageMake(s.output.Width, s.output.Height)
+	check(s, len(bytes) == s.final.Width*s.final.Height*4, "final output readback")
+	if len(bytes) != s.final.Width*s.final.Height*4 do return
+	image := foster.ImageMake(s.final.Width, s.final.Height)
 	defer foster.ImageDispose(&image)
 	for &pixel, i in image.Pixels do pixel = {bytes[i*4], bytes[i*4+1], bytes[i*4+2], bytes[i*4+3]}
 	_ = os.make_directory_all(#directory + "/../../library/screenshots")
@@ -235,7 +234,8 @@ validate_frame :: proc(s: ^State, app: ^foster.App) {
 			resize_window(s, app, {1100, 825})
 		case 12:
 			if waiting(s, resized(s, app), "window resize applied") do return
-			check(s, s.output.Width == 1100 && s.output.Height == 825, "resize uses native output pixels")
+			pixels := foster.SizeInPixels(&app.Window)
+		check(s, s.final.Width == pixels.X && s.final.Height == pixels.Y, "resize uses native output pixels")
 			capture(s, "resized")
 			select_parameter_shader(s, 1)
 			s.mode = 3
@@ -343,17 +343,21 @@ finish :: proc(s: ^State, app: ^foster.App, pass := "") {
 	foster.Exit(app)
 }
 
+// 控件矩形取自最近一次 draw；ImGui 坐标就是窗口逻辑坐标，与注入的鼠标位置相同。
 press_widget :: proc(s: ^State, app: ^foster.App, id: string, fraction: f32) {
-	data := clay.GetElementData(clay.ID(id))
-	check(s, data.found, "widget exists")
-	box := data.boundingBox
-	size := foster.Size(&app.Window)
-	pixels := foster.SizeInPixels(&app.Window)
-	position := foster.Vec2f{(s.region.X + (box.x + box.width*fraction)*s.ui_scale)*f32(size.X)/f32(pixels.X),
-		(s.region.Y + (box.y + box.height*0.5)*s.ui_scale)*f32(size.Y)/f32(pixels.Y)}
-	inject_move(s, app, position)
+	press_widget_at(s, app, id, fraction, 0.5)
+}
+
+press_widget_at :: proc(s: ^State, app: ^foster.App, id: string, x, y: f32) {
+	rect, found := lab.widget_rect(s.tool, id)
+	check(s, found, fmt.tprintf("widget %s exists", id))
+	inject_move(s, app, widget_point(rect, x, y))
 	inject_button(s, app, true)
 	log_event(s, "press %s", id)
+}
+
+widget_point :: proc(rect: lab.Widget_Rect, x, y: f32) -> foster.Vec2f {
+	return {rect.min.x + (rect.max.x-rect.min.x)*x, rect.min.y + (rect.max.y-rect.min.y)*y}
 }
 
 release_pointer :: proc(s: ^State, app: ^foster.App) {
@@ -377,6 +381,23 @@ inject_button :: proc(s: ^State, app: ^foster.App, down: bool) {
 	app.Input.Enabled = foster.InputEnabledAll
 	foster.InputMouseButton(&app.Input, .Left, down, app.Time.Elapsed)
 	input_sent(s, app, down ? "left down" : "left up")
+}
+
+inject_wheel :: proc(s: ^State, app: ^foster.App, wheel: foster.Vec2f) {
+	app.Input.Enabled = foster.InputEnabledAll
+	foster.InputMouseWheel(&app.Input, wheel)
+	input_sent(s, app, fmt.tprintf("wheel %.1f,%.1f", wheel.X, wheel.Y))
+}
+
+// 控件在参数区可见范围内返回 true；否则把鼠标放到参数区上并注入一次向下滚轮，和真实用户一样滚过去。
+scroll_into_view :: proc(s: ^State, app: ^foster.App, id: string) -> bool {
+	area, has_area := lab.widget_rect(s.tool, "inspector")
+	rect, found := lab.widget_rect(s.tool, id)
+	check(s, has_area && found, fmt.tprintf("widget %s and the inspector exist", id))
+	if !has_area || !found || (rect.min.y >= area.min.y && rect.max.y <= area.max.y) do return true
+	inject_move(s, app, widget_point(area, 0.5, 0.5))
+	inject_wheel(s, app, {0, rect.max.y > area.max.y ? -3 : 3})
+	return false
 }
 
 inject_key :: proc(s: ^State, app: ^foster.App, key: foster.Keys, down: bool) {
@@ -443,13 +464,10 @@ window_restore :: proc(s: ^State, app: ^foster.App) -> bool {
 	return true
 }
 
-// Clay 元素哈希表保留历史布局；控件是否仍存在应看刚完成这一帧的交互列表。
+// 控件是否出现在最近一次 draw 里。
 widget_present :: proc(s: ^State, id: string) -> bool {
-	key := clay.ID(id).id
-	for widget in s.ctx.previous_widgets {
-		if widget.id == key do return true
-	}
-	return false
+	_, found := lab.widget_rect(s.tool, id)
+	return found
 }
 
 // shot 的最后一步：切到 2D 材质 Shader SpriteShadow（两个 Pass、带 [Instance] 字段），等它的 Shader 编译生效后截图，

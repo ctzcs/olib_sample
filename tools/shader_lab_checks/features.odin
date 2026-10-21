@@ -142,48 +142,22 @@ validate_features :: proc(s: ^State, app: ^foster.App) {
 	if s.smoke_step == 11 {
 		capture(s, "features-shader-menu")
 		s.shader_menu = false
-		// 新建的模板排在两个预览之前，参数组下标变了：按名字回到 Preview3D 再检查分隔条与紧凑布局。
+		// 新建的模板排在两个预览之前，参数组下标变了：按名字回到 Preview3D 再检查预览尺寸。
 		for e, i in s.shaders {
 			if e.desc.name == "Preview3D" do lab.select_shader(s.tool, i)
 		}
-		press_widget(s, app, "sidebar-splitter", 0.5)
-		s.smoke_step = 2
-		s.capture_index = 0
+		s.preview_width = s.viewport.Width
+		resize_window(s, app, {900, 640})
+		s.smoke_step = 12
 		return
 	}
-	// 输入在固定 Update 消费；不能假设每个渲染帧都推进了输入状态。
-	if s.elapsed < s.feature_next do return
-	s.feature_next = s.elapsed+0.04
-	s.capture_index += 1
-	switch s.capture_index {
-	case 2:
-		pixels := foster.SizeInPixels(&app.Window)
-		logical := foster.Size(&app.Window)
-		inject_move(s, app, {
-			(s.region.X+380)*f32(logical.X)/f32(pixels.X),
-			(s.region.Y+160)*f32(logical.Y)/f32(pixels.Y)})
-	case 4:
-		release_pointer(s, app)
-	case 6:
-		check(s, s.sidebar_width > 340 && scene_texture(s).Width == int(s.viewport.Width), "splitter updates viewport and Pass target")
-		press_widget(s, app, "toggle-sidebar", 0.5)
-	case 8:
-		release_pointer(s, app)
-	case 12:
-		check(s, s.sidebar_collapsed && s.viewport.X == 8, "collapsed inspector expands preview")
-		resize_window(s, app, {540, 640})
-	case 16:
-		// 按钮位置取自最近一次布局，必须是新尺寸下的布局。
-		if waiting(s, resized(s, app), "window resize applied") {
-			s.capture_index -= 1
-			return
-		}
-		press_widget(s, app, "toggle-sidebar", 0.5)
-	case 18:
-		release_pointer(s, app)
-	case 22:
-		check(s, s.compact && !s.sidebar_collapsed && s.viewport.X == 8, "small panel uses overlay inspector")
-		capture(s, "features-compact")
-		finish(s, app, "PASS: presets/defaults/rollback, stale file request, texture reload, custom preview, splitter/collapse/compact")
+	if s.smoke_step == 12 {
+		if waiting(s, resized(s, app), "window resize applied") do return
+		e := &s.shaders[s.selected_shader]
+		if waiting(s, e.ready && e.targets[0].buffers[0].Width == int(s.viewport.Width), "Preview3D targets follow the smaller preview") do return
+		check(s, s.viewport.Width < s.preview_width && s.viewport.X+s.viewport.Width <= f32(s.final.Width),
+			"preview area stays inside the final output")
+		capture(s, "features-resized")
+		finish(s, app, "PASS: presets/defaults/rollback, stale file request, texture reload, custom preview, new shaders, preview sizing")
 	}
 }

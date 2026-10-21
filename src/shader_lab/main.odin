@@ -1,24 +1,34 @@
 package main
 
-// 独立启动接线：窗口、输入、项目路径和 MSDF 资产；工具位于 olib:kit/tools/shader_lab。
+// 独立启动接线：窗口、ImGui 与 Dock 布局、文件对话框与拖放；工具位于 olib:kit/tools/shader_lab。
+// 整帧（背景 + ImGui）先画进离屏目标再贴到窗口，验证截图读取同一目标。
 import "core:fmt"
 import "core:os"
 
 import foster "olib:foster"
 import appkit "olib:kit/app"
+import r2d "olib:kit/rendering/2d"
+import mat "olib:kit/rendering/material"
 import lab "olib:kit/tools/shader_lab"
+import imgui "olib:thirdparty/odin-imgui"
+import imgui_foster "olib:thirdparty/odin-imgui/imgui_impl_ofoster"
 import files "../../shared/shader_lab_files"
-import fonts "../../shared/msdf_font"
 import checks "../../tools/shader_lab_checks"
 
 Host :: struct {
 	tool: lab.Session,
 	files: files.Bridge,
 	validation: checks.State,
-	font: foster.MsdfFont,
-	font_texture: foster.Texture,
-	failed, embedded: bool,
+	frame: foster.Target, // 最终输出：背景 + ImGui，渲染完贴到窗口
+	materials: mat.Material_Library,
+	blit: r2d.Render2D, // 借用 materials；Host 初始化后不得搬动
+	failed, gui: bool,
 }
+
+// ImGui 首次布局：控制窗口停靠左侧，预览占其余区域。
+PANEL_RATIO :: f32(0.3)
+// ImGuiDockNodeFlags_DockSpace 是 imgui_internal.h 的私有位，绑定里没有生成。
+DOCK_NODE_DOCKSPACE :: transmute(imgui.DockNodeFlags)i32(1 << 10)
 
 main :: proc() {
 	host := new(Host)
@@ -36,7 +46,6 @@ main :: proc() {
 	}
 	host.validation.hierarchy = appkit.has_arg(os.args, "hierarchy")
 	host.validation.targets = appkit.has_arg(os.args, "targets")
-	host.embedded = appkit.has_arg(os.args, "embedded")
 	config := foster.DefaultAppConfig("olib / Shader Lab / 2D + 3D", 1280, 800)
 	if appkit.has_arg(os.args, "scaled") {
 		config.Width = 1600
@@ -66,18 +75,22 @@ main :: proc() {
 
 startup :: proc(app: ^foster.App) {
 	host := foster.AppGetUserDataAs(app, Host)
-	ok: bool
-	host.font, host.font_texture, ok = fonts.load(&app.GraphicsDevice)
+	host.materials = {device = &app.GraphicsDevice}
+	ok := r2d.init(&host.blit, &host.materials) == ""
+	// 离屏最终输出是 foster 的 RGBA8 目标；不开键盘导航，方向键和空格不被面板误用。
+	if ok do ok = imgui_foster.Init(app, {.DockingEnable}, .Olib, .R8G8B8A8_UNORM)
+	host.gui = ok
 	if ok {
+		imgui.GetIO().IniFilename = nil // 布局不写进工作目录；每次启动用默认停靠
 		ok = lab.init(&host.tool, &app.GraphicsDevice, {
 			source_root = host.tool.source_root,
-			font = &host.font, font_texture = host.font_texture,
 			paused = host.validation.shot || host.validation.smoke,
 			file_dialogs = true,
 			open_file = files.open_file,
 		})
 	}
 	if ok do files.init(&host.files, app.Window.Handle)
+	host.validation.final = &host.frame
 	if !ok {
 		host.failed = true
 		foster.Exit(app)
@@ -89,48 +102,49 @@ update :: proc(app: ^foster.App) {
 	files.update(&host.files, &host.tool)
 	checks.update(&host.validation, app)
 	lab.update(&host.tool, app.Time.Delta)
+	// 离焦时取消调色板与轨道旋转。验证只认注入的输入：真实焦点不参与，color_test_blur 模拟离焦。
+	checking := host.validation.smoke || host.validation.shot
+	focused := checking ? !host.validation.color_test_blur : foster.Focused(&app.Window)
+	if !focused do lab.cancel(&host.tool)
+	escape := foster.KeyboardPressed(&app.Input.State.Keyboard, .Escape)
+	if escape && !host.tool.color_picker.open && !host.tool.shader_menu && !imgui.GetIO().WantTextInput {
+		foster.Exit(app)
+	}
+	imgui_foster.NewFrame(app, app.Time.Delta, force_focus = checking)
 }
 
 render :: proc(app: ^foster.App) {
 	host := foster.AppGetUserDataAs(app, Host)
-	target := foster.DrawableTargetFromWindow(&app.Window)
-	w := f32(target.WidthInPixels)
-	h := f32(target.HeightInPixels)
-	region := foster.Rect{0, 0, w, h}
-	if host.embedded do region = {48, 40, w-96, h-80}
-	foster.GraphicsDeviceClear(&app.GraphicsDevice, target, foster.Color{35, 40, 47, 255})
-	input := host_input(app, &host.validation)
-	logical := foster.Size(&app.Window)
-	files.input(&host.files, &input, w/f32(max(1, logical.X)), h/f32(max(1, logical.Y)))
-	if input.escape && !host.tool.color_picker.open && !host.tool.splitting do foster.Exit(app)
-	_ = lab.render(&host.tool, target, region, input)
+	device := &app.GraphicsDevice
+	window := foster.DrawableTargetFromWindow(&app.Window)
+	w, h := window.WidthInPixels, window.HeightInPixels
+	if w <= 0 || h <= 0 do return
+	if host.frame.Width != w || host.frame.Height != h {
+		foster.TargetDispose(&host.frame)
+		foster.TargetInit(&host.frame, device, w, h, "shader lab frame")
+	}
+	foster.GraphicsDeviceClear(device, foster.DrawableTargetFromTarget(&host.frame), foster.Color{35, 40, 47, 255})
+	if imgui_foster.BeginRender(app) {
+		dock := imgui.GetID("shader-lab-dock")
+		if imgui.DockBuilderGetNode(dock) == nil do default_layout(dock, imgui.GetMainViewport().WorkSize)
+		imgui.DockSpaceOverViewport(dock, nil, {})
+		dropped, position := files.drops(&host.files)
+		lab.draw(&host.tool, dropped, position)
+		imgui_foster.EndRender(app, &host.frame)
+	}
+	r2d.quad_texture(&host.blit, foster.TargetAttachment(&host.frame), {0, 0}, {f32(w), 0}, {f32(w), f32(h)}, {0, f32(h)},
+		{0, 0}, {1, 0}, {1, 1}, {0, 1}, foster.White)
+	r2d.submit(&host.blit, {target = window})
 }
 
-// 宿主将窗口逻辑坐标转换成最终目标像素，并决定工具能消费哪些输入。
-host_input :: proc(app: ^foster.App, validation: ^checks.State) -> lab.Input {
-	logical := foster.Size(&app.Window)
-	pixels := foster.SizeInPixels(&app.Window)
-	scale := foster.Vec2{f32(pixels.X)/f32(max(1, logical.X)), f32(pixels.Y)/f32(max(1, logical.Y))}
-	mouse := &app.Input.State.Mouse
-	keys := &app.Input.State.Keyboard
-	input := lab.Input{
-		pointer = {mouse.Position.X*scale.x, mouse.Position.Y*scale.y},
-		delta = {mouse.Delta.X*scale.x, mouse.Delta.Y*scale.y},
-		scroll = {mouse.Wheel.X, mouse.Wheel.Y},
-		left_down = foster.MouseDown(mouse, .Left),
-		right_down = foster.MouseDown(mouse, .Right),
-		right_pressed = foster.MousePressed(mouse, .Right),
-		focused = foster.Focused(&app.Window),
-		escape = foster.KeyboardPressed(keys, .Escape),
-		vertical_adjust = f32(int(foster.PressedOrRepeated(keys, .Down))-int(foster.PressedOrRepeated(keys, .Up))),
-	}
-	if validation.smoke do input.focused = !validation.color_test_blur
-	if foster.KeyboardPressed(keys, .Tab) {
-		input.navigation.next = foster.KeyboardDown(keys, .LeftShift) ? -1 : 1
-	}
-	input.navigation.activate = foster.KeyboardPressed(keys, .Enter)
-	input.navigation.adjust = f32(int(foster.PressedOrRepeated(keys, .Right))-int(foster.PressedOrRepeated(keys, .Left)))
-	return input
+default_layout :: proc(dock: imgui.ID, size: imgui.Vec2) {
+	imgui.DockBuilderAddNode(dock, DOCK_NODE_DOCKSPACE)
+	imgui.DockBuilderSetNodeSize(dock, size)
+	panel, preview: imgui.ID
+	imgui.DockBuilderSplitNode(dock, .Left, PANEL_RATIO, &panel, &preview)
+	imgui.DockBuilderDockWindow(lab.CONTROL_WINDOW, panel)
+	imgui.DockBuilderDockWindow(lab.PREVIEW_WINDOW, preview)
+	imgui.DockBuilderFinish(dock)
 }
 
 shutdown :: proc(app: ^foster.App) {
@@ -138,6 +152,8 @@ shutdown :: proc(app: ^foster.App) {
 	files.dispose(&host.files)
 	checks.dispose(&host.validation)
 	lab.dispose(&host.tool)
-	foster.MsdfFontDispose(&host.font)
-	foster.TextureDispose(&host.font_texture)
+	if host.gui do imgui_foster.Shutdown()
+	r2d.dispose(&host.blit)
+	mat.material_library_dispose(&host.materials)
+	foster.TargetDispose(&host.frame)
 }

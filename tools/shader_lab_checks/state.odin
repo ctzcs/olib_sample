@@ -10,6 +10,7 @@ import lab "olib:kit/tools/shader_lab"
 State :: struct {
 	using tool: ^lab.Session,
 	app: ^foster.App, // 第一次 update 时记录，输入注入与失败诊断使用
+	final: ^foster.Target, // 宿主的最终输出（背景 + ImGui），截图和像素检查读取它
 	features: bool,
 	multipass: bool,
 	hierarchy: bool,
@@ -17,7 +18,8 @@ State :: struct {
 	graph_source, graph_shader: string,
 	graph_bank: rawptr,
 	graph_hash: u64,
-	fixed_pass_y, fixed_tabs_y, saved_scroll_y: f32,
+	fixed_pass, fixed_tabs: lab.Widget_Rect, // 浮层 / 页签切换前记下的控件位置
+	preview_width: f32,
 	feature_record: int,
 	feature_template, feature_template_written: int, // 新建着色器步骤：当前模板与已写出的模板（+1）
 	feature_builtin: u64,
@@ -73,7 +75,7 @@ update :: proc(s: ^State, app: ^foster.App) {
 	input_track(s, app)
 	watch(s, app)
 	s.elapsed += f64(app.Time.Delta)
-	if s.output.Width > 0 do validate_frame(s, app)
+	if s.final != nil && s.final.Width > 0 do validate_frame(s, app)
 	if s.elapsed > 120 {
 		if !s.failed {
 			pending := s.wait_reason == "" ? "no explicit wait pending" :

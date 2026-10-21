@@ -137,13 +137,10 @@ update :: proc(b: ^Bridge, tool: ^lab.Session) {
 	}
 }
 
-// SDL drop 坐标是窗口逻辑像素，宿主提供当前像素比例。
-input :: proc(b: ^Bridge, input: ^lab.Input, scale_x, scale_y: f32) {
-	if b.consumed do return
-	input.dropped_files = b.frame[:]
-	if len(b.frame) > 0 {
-		b.consumed = true
-		input.pointer = {b.frame_x*scale_x, b.frame_y*scale_y}
-		input.focused = true
-	}
+// 本帧拖入的文件与位置，交给 lab.draw。SDL drop 坐标是窗口逻辑坐标，与 ImGui 坐标相同；
+// 路径借用到下一次 update，每批只交出一次。
+drops :: proc(b: ^Bridge) -> (paths: []string, position: [2]f32) {
+	if b.consumed || len(b.frame) == 0 do return nil, {}
+	b.consumed = true
+	return b.frame[:], {b.frame_x, b.frame_y}
 }

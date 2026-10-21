@@ -1,8 +1,10 @@
 package shader_lab_checks
 
 // 调色板实际输入验收；复用隔离的 Shader Lab 源码和最终输出截图。
+// ImGui ColorPicker4 的色相与透明度条是竖条：色相自上而下 0→1，透明度自上而下 1→0。
 import foster "olib:foster"
-import clay "olib:thirdparty/clay-odin"
+import lab "olib:kit/tools/shader_lab"
+import imgui "olib:thirdparty/odin-imgui"
 
 color_test_value :: proc(s: ^State, group: int) -> [4]f32 {
 	p := &s.parameters[group]
@@ -13,13 +15,9 @@ color_test_value :: proc(s: ^State, group: int) -> [4]f32 {
 }
 
 color_test_move :: proc(s: ^State, app: ^foster.App, id: string, x, y: f32, down: bool) {
-	box := clay.GetElementData(clay.ID(id))
-	check(s, box.found, "color control exists")
-	logical := foster.Size(&app.Window)
-	pixels := foster.SizeInPixels(&app.Window)
-	point := foster.Vec2f{(s.region.X+box.boundingBox.x+box.boundingBox.width*x)*f32(logical.X)/f32(pixels.X),
-		(s.region.Y+box.boundingBox.y+box.boundingBox.height*y)*f32(logical.Y)/f32(pixels.Y)}
-	inject_move(s, app, point)
+	rect, found := lab.widget_rect(s.tool, id)
+	check(s, found, "color control exists")
+	inject_move(s, app, widget_point(rect, x, y))
 	inject_button(s, app, down)
 }
 
@@ -38,7 +36,7 @@ validate_color_frame :: proc(s: ^State, app: ^foster.App) {
 		release_pointer(s, app)
 	case 6:
 		check(s, s.color_picker.open, "Tint swatch opens palette")
-		press_widget(s, app, "color-hue", 0.58)
+		press_widget_at(s, app, "color-hue", 0.5, 0.58)
 	case 10:
 		color_test_move(s, app, "color-sv", 0.8, 0.25, true)
 	case 14:
@@ -47,7 +45,7 @@ validate_color_frame :: proc(s: ^State, app: ^foster.App) {
 		check(s, color_test_value(s, 0) == [4]f32{1, 1, 1, 1} && s.yaw == 0.4, "palette isolates shader and camera")
 		capture(s, "palette")
 	case 15:
-		press_widget(s, app, "color-alpha", 0.4)
+		press_widget_at(s, app, "color-alpha", 0.5, 0.6)
 	case 19:
 		check(s, color_test_value(s, 1)[3] > 0.35 && color_test_value(s, 1)[3] < 0.45, "opacity control updates alpha")
 		capture(s, "palette-alpha")
@@ -72,14 +70,14 @@ validate_color_frame :: proc(s: ^State, app: ^foster.App) {
 	case 43:
 		color_test_move(s, app, "color-sv", 1.5, -0.5, true)
 	case 47:
-		check(s, s.ctx.active_id == 0 && s.color_picker.hsv[1] == 1 && s.color_picker.hsv[2] == 1,
+		hsv := lab.color_rgb_to_hsv({s.color_picker.color[0], s.color_picker.color[1], s.color_picker.color[2]})
+		check(s, !imgui.IsAnyItemActive() && hsv[1] > 0.999 && hsv[2] > 0.999,
 			"drag outside clamps and releases capture")
 		press_widget(s, app, "color-cancel", 0.5)
 	case 51:
 		value := color_test_value(s, 1)
 		check(s, !s.color_picker.open && value[0] > 0.95 && value[1] > 0.15 && value[1] < 0.25,
 			"second cancel restores accepted color")
-		check(s, s.ctx.error_count == 0 && !s.ctx.pool_overflow, "palette layout remains valid")
 		capture(s, "palette-applied")
 		select_parameter_shader(s, 0)
 		s.mode = 1

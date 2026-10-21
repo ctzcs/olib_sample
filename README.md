@@ -193,8 +193,11 @@ run.bat shader_lab d3d12
 run.bat shader_lab smoke vulkan
 run.bat shader_lab smoke d3d12 scaled
 run.bat shader_lab shot narrow
-run.bat shader_lab features embedded d3d12
-run.bat shader_lab multipass embedded d3d12
+run.bat shader_lab features d3d12
+run.bat shader_lab multipass d3d12
+run.bat shader_lab hierarchy d3d12
+run.bat shader_lab targets d3d12
+run.bat shader_lab colors d3d12
 ```
 
 Requires `odin` and `shadercross` on PATH. Edit and save `.oshader` files under
@@ -205,23 +208,22 @@ Each Pass keeps its own parameter values. See [syntax and publishing](../olib/ki
 Zed / ZedG highlighting is available through [the local extension](../olib/tools/zed-shader/README.md).
 
 The reusable tool lives in `olib:kit/tools/shader_lab`; this sample keeps only application
-startup/input wiring and project assets. Hosts supply a region, routed input, paths and an MSDF
-font to `init / update / render / cancel / dispose`. Add `embedded` to run inside an offset region.
+startup wiring (Dear ImGui, a dock layout, native dialogs and drops) and project assets. The tool
+draws its control and preview windows into the host's ImGui frame through
+`init / update / draw / cancel / dispose`; the host owns the ImGui context, font and input.
+The whole frame is drawn to an offscreen target first, so screenshots include the UI.
 See [embedding and ownership](../olib/kit/tools/shader_lab/README.md). Optional screenshot and
 fault-injection helpers live in `tools/shader_lab_checks`, outside the runtime tool package.
 
 Sliders, vector controls, color swatches and texture selection are generated from the fields.
-The compact dark inspector uses Noto Sans CJK text, icons, thin borders and blue selection accents.
-All text uses a genuine offline MSDF atlas (48px/em, independent display sizes), embedded from
-[shared/msdf_font](shared/msdf_font/README.md). The atlas includes the sample Chinese labels.
-New characters require regenerating the atlas and rebuilding; missing label glyphs produce
-a diagnostic. Runtime SDF generation and the old `sdf` switch have been removed.
+The dark ImGui style, Noto Sans CJK font (GB2312 subset, glyphs rasterized on demand) and icons
+come from olib's ImGui backend; labels outside that subset produce a diagnostic.
 Texture controls show the currently bound image as an aspect-preserving thumbnail; click the
 card to browse native files, choose from the texture directory, or clear back to the checker.
 Drop an image onto the card to bind it; changed image files reload automatically and failures
 retain the previous image. Properties of type `2D` store image paths. Native dialog/drop wiring
 is in `shared/shader_lab_files`; the reusable tool only exchanges file requests and paths.
-Click a color swatch (such as Tint) to open the hue/SV palette, opacity bar and presets.
+Click a color swatch (such as Tint) to open the palette (SV square, hue and opacity bars, presets).
 Colors preview immediately; Apply keeps the color, while Cancel, Escape or focus loss restores it.
 Existing values survive field reordering by stable ID; new fields use defaults.
 Add images to `src/shader_lab/shaders/textures/` to select them in the texture control.
@@ -229,8 +231,8 @@ Changing slider values or textures needs no shader compilation. Save/Load stores
 snapshots for the selected shader group, including relative image paths. The tool writes the
 preset JSON for you. Reset all restores Properties defaults; R restores one field. These snapshots
 do not edit Properties defaults or host material documents; document undo/redo belongs to the host.
-Drag the inspector's right edge to resize it, or use Hide/Panel to collapse it. Narrow panels
-use an overlay inspector. Hosts can supply `Preview_Hooks` to record their own sprites or models for material shaders.
+Dock, resize or undock the Shader Lab and preview windows freely; Pass targets follow the preview
+area's pixel size. Hosts can supply `Preview_Hooks` to record their own sprites or models for material shaders.
 
 Select the 2D or 3D workspace, then **二维拖尾** or **三维拖尾** for a multi-pass example: scene rendering,
 half-resolution horizontal/vertical blur, then previous-frame feedback. The declarations live
@@ -242,16 +244,18 @@ RenderTextures; switching releases them and recreates them on return, resetting 
 Floating-point targets and MSAA are supported; the UI stays outside
 the pass chain. See the [Pass syntax](../olib/kit/rendering/shader/lang/README.md#pass-与目标).
 
-Choose fullscreen/sprite for 2D, sphere/cube for 3D; the sidebar separates Shader, Pass and parameter groups.
-Pause freezes time; right-drag orbits the camera and wheel zooms.
-Tab/Enter/arrows navigate controls. `source <directory>` selects a custom source root.
+Choose fullscreen/sprite for 2D, sphere/cube for 3D; the control window separates Shader, Pass and parameter groups.
+Pause freezes time; right-drag on the preview orbits the camera and wheel zooms.
+`source <directory>` selects a custom source root.
 Use the sample vertex/engine-input interfaces when adding shaders. Properties automatically
 supply fragment parameter declarations; there are no generated-header includes to maintain.
 
 `smoke` edits isolated copies and checks HLSL and Properties failure recovery, generated layout
 migration, parameter preservation, textures, multi-shader discovery, UI input and resize.
 `shot` writes all four previews to `library/screenshots/shader-lab-*.png`.
-`features` runs the focused preset/texture/custom-preview/layout checks using isolated sources.
+`features` runs the focused preset/texture/custom-preview/new-shader/preview-size checks using isolated sources.
+`hierarchy`, `targets` and `colors` cover Pass/folder interaction, RenderTexture lifetime and the palette.
+Checks accept only injected input and locate widgets through `lab.widget_rect`.
 `multipass` checks graph generation, target formats/sizes, 2D/3D feedback, pause/step/reset/resize
 and atomic rollback/recovery using isolated sources, without running the other smoke suites.
 The reusable `olib:kit/rendering/shader/dev` package is independent of scene dimension;

@@ -9,6 +9,7 @@ import "core:strings"
 import foster "olib:foster"
 import dev "olib:kit/rendering/shader/dev"
 import lab "olib:kit/tools/shader_lab"
+import imgui "olib:thirdparty/odin-imgui"
 import SDL "vendor:sdl3"
 
 @(private="file")
@@ -113,10 +114,11 @@ report_state :: proc(b: ^strings.Builder, s: ^State, message: string) {
 	w := s.watched
 	fmt.sbprintf(b, "window: %dx%d (pixels %dx%d) at %d,%d %v; requested %dx%d\n", w.size.X, w.size.Y,
 		w.pixels.X, w.pixels.Y, w.position.X, w.position.Y, w.flags, s.resize_to.X, s.resize_to.Y)
-	fmt.sbprintf(b, "output %dx%d, region %v, viewport %v, ui scale %.3f, compact %v, sidebar collapsed %v\n",
-		s.output.Width, s.output.Height, s.region, s.viewport, s.ui_scale, s.compact, s.sidebar_collapsed)
-	fmt.sbprintf(b, "ui: pointer %.1f,%.1f down %v, active %d, errors %d, overflow %v, color picker %v\n",
-		s.ctx.pointer_x, s.ctx.pointer_y, s.ctx.pointer_down, s.ctx.active_id, s.ctx.error_count, s.ctx.pool_overflow, s.color_picker.open)
+	io := imgui.GetIO()
+	fmt.sbprintf(b, "output %dx%d, preview viewport %v, pointer %v\n", s.final.Width, s.final.Height, s.viewport, s.pointer)
+	fmt.sbprintf(b, "imgui: mouse %.1f,%.1f down %v, any item active %v, wants mouse %v, shader menu %v, color picker %v, %d widgets\n",
+		io.MousePos.x, io.MousePos.y, io.MouseDown[0], imgui.IsAnyItemActive(), io.WantCaptureMouse,
+		s.shader_menu, s.color_picker.open, len(s.widgets))
 	fmt.sbprintf(b, "session: workspace %d (empty %v), shader %d, inspect pass %d, preview pass %d, group %d, mode %d, paused %v, clock %.3f, yaw %.3f\n",
 		s.workspace, s.workspace_empty, s.selected_shader, s.inspect_pass, s.preview_pass, s.selected, s.mode, s.paused, s.clock, s.yaw)
 	report_bank(b, "live bank", s.bank)
