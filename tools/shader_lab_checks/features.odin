@@ -142,7 +142,10 @@ validate_features :: proc(s: ^State, app: ^foster.App) {
 	if s.smoke_step == 11 {
 		capture(s, "features-effect-menu")
 		s.effect_menu = false
-		select_parameter_effect(s, 1)
+		// 新建的模板排在两个预览之前，参数组下标变了：按名字回到 Preview3D 再检查分隔条与紧凑布局。
+		for e, i in s.effects {
+			if e.desc.name == "Preview3D" do lab.select_effect(s.tool, i)
+		}
 		press_widget(s, app, "sidebar-splitter", 0.5)
 		s.smoke_step = 2
 		s.capture_index = 0
