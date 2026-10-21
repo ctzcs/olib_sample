@@ -58,6 +58,14 @@ drop_callback :: proc "c" (userdata: rawptr, event: ^SDL.Event) -> bool {
 	return true
 }
 
+// 交给 Shader Lab 的 Config.open_file：用系统默认程序打开源码文件。
+open_file :: proc(path: string) -> bool {
+	url, _ := strings.replace_all(path, "\\", "/", context.temp_allocator)
+	url = strings.has_prefix(url, "/") ? strings.concatenate({"file://", url}, context.temp_allocator) :
+		strings.concatenate({"file:///", url}, context.temp_allocator)
+	return SDL.OpenURL(strings.clone_to_cstring(url, context.temp_allocator))
+}
+
 init :: proc(b: ^Bridge, window: ^SDL.Window) {
 	b.window = window
 	b.window_id = SDL.GetWindowID(window)

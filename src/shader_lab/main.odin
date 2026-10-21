@@ -74,6 +74,7 @@ startup :: proc(app: ^foster.App) {
 			font = &host.font, font_texture = host.font_texture,
 			paused = host.validation.shot || host.validation.smoke,
 			file_dialogs = true,
+			open_file = files.open_file,
 		})
 	}
 	if ok do files.init(&host.files, app.Window.Handle)
