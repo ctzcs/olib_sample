@@ -4,7 +4,7 @@ package main
 //
 // 这是“复制到游戏里按需修改”的起点，不是库 API：光照模型、槽位约定、
 // 阴影/后处理是否要做都由游戏决定。kit/rendering/3d 只提供机制
-// （Mesh 上传、泛型排序队列、字节码按驱动选择、std140 写入、DebugDraw3D）。
+// （Mesh 上传、泛型排序队列、字节码按驱动选择、std140 写入、Render3D 的调试线）。
 //
 // 每帧：renderer_render —— 片元公共槽（光照/阴影关闭/点光）设一次，
 // 逐项设顶点矩阵块 + 片元材质块后经 Foster DrawCommand 发射。

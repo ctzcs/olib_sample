@@ -3,7 +3,7 @@ package main
 // forward3d：参考前向渲染器的演示场景。
 //
 // kit/rendering/3d 只提供机制（Mesh 上传、泛型排序队列、字节码选择、std140、
-// DebugDraw3D）；光照与材质在本目录的 renderer / uniforms / material / shaders 里，
+// Render3D 的调试线）；光照与材质在本目录的 renderer / uniforms / material / shaders 里，
 // 游戏按自己的画风复制改写。
 //
 // 场景：地面 + 不透明立方体与金属球 + 两个半透明物体（检验后到前排序），
@@ -53,7 +53,7 @@ Scene_Object :: struct {
 
 game: foster.App
 renderer: Renderer
-debug: r3d.Debug_Draw_3D
+debug: r3d.Render3D // 只记录调试线；场景本身由上面的手写渲染器绘制
 queue: r3d.Render_Queue(Standard_Draw)
 camera: world.Camera3D
 objects: [Shape]Scene_Object
@@ -87,9 +87,9 @@ startup :: proc(g: ^foster.App) {
 		return
 	}
 	fmt.println("forward3d: driver", device.Driver)
-	r3d.debug_draw_init(&debug, device)
 	compose_materials = {device = device}
 	assert(r2d.init(&compose, &compose_materials) == "")
+	assert(r3d.init(&debug, &compose_materials) == "")
 	attachments := [2]foster.TargetAttachmentSpec{{Format = .Color}, {Format = .Depth32}}
 	foster.TargetInit(&scene_target, device, VIEW_W, VIEW_H, attachments[:], "forward3d color + depth")
 
@@ -110,7 +110,7 @@ shutdown :: proc(g: ^foster.App) {
 		r3d.mesh_dispose(&object.mesh)
 	}
 	r3d.queue_dispose(&queue)
-	r3d.debug_draw_dispose(&debug)
+	r3d.dispose(&debug)
 	foster.TargetDispose(&scene_target)
 	r2d.dispose(&compose)
 	mat.material_library_dispose(&compose_materials)
@@ -185,9 +185,11 @@ render :: proc(g: ^foster.App) {
 	renderer_render(&renderer, &camera, &light, point_lights[:], spot_lights[:], offscreen, &queue, nil)
 
 	// ---- 调试线：地面网格 + 点光位置 ----
-	r3d.debug_draw_grid(&debug, 6, 1, {1, 1, 1, 0.12})
-	r3d.debug_draw_sphere(&debug, point_lights[0].position, 0.12, {1, 0.6, 0.2, 1}, segments = 12)
-	r3d.debug_draw_render(&debug, offscreen, &camera)
+	r3d.grid(&debug, 6, 1, {1, 1, 1, 0.12})
+	r3d.sphere(&debug, point_lights[0].position, 0.12, {1, 0.6, 0.2, 1}, segments = 12)
+	r3d.submit(&debug, {target = offscreen, view_matrix = world.camera3d_view(&camera),
+		view_projection = world.camera3d_view_projection(&camera)})
+	r3d.clear(&debug)
 
 	// ---- 合成到窗口（保持宽高比居中）----
 	window := foster.DrawableTargetFromWindow(&g.Window)

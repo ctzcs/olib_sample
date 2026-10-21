@@ -152,7 +152,7 @@ run.bat forward3d shot
 - `forward3d`: a Standard PBR forward renderer (directional, point and spot lights,
   sorted alpha blending, debug grid) built on the mechanism-only `kit/rendering/3d`
   (mesh upload, generic render queue, shader bytecode selection, std140 packing,
-  DebugDraw3D). Lighting, materials and shaders live in this sample, not in olib:
+  Render3D debug lines). Lighting, materials and shaders live in this sample, not in olib:
   copy `src/forward3d` into a game and change them to fit its look.
 - `shot` renders a fixed-time frame, writes `forward3d.png` to this directory and exits.
   Set `SDL_GPU_DRIVER=vulkan` or `SDL_GPU_DRIVER=direct3d12` to pick the backend.
