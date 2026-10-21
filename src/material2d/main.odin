@@ -118,7 +118,7 @@ startup :: proc(app: ^foster.App) {
 		return
 	}
 	hue := mat.instance_slot(material, "hue") // 名字只解析一次，之后按槽位设值
-	_ = mat.instance_values_set(&s.cool, hue, {0.7, 0, 0, 0})
+	mat.instance_values_set(&s.cool, hue, 0.7)
 	s.material = material
 }
 

@@ -260,8 +260,7 @@ render :: proc(app: ^foster.App) {
 			// model 与 models 共用同一 instanced 材质，也会合成一批。
 			// 平铺数组每个实例连续 slots 个 float4（hue、motion）；首个实例单独用 model 记录。
 			slots := mat.instance_slot_count(s.swarm.material)
-			values := mat.Instance_Values{count = slots, set = 1 << u32(slots) - 1}
-			copy(values.numbers[:slots], s.swarm.values[:slots])
+			values := mat.instance_values_from(s.swarm.values[:slots])
 			error = r3d.model(&s.renderer, &s.swarm.mesh, s.swarm.material,
 				s.swarm.items[0].world, &s.swarm.local_bounds, &values)
 			if error == .None {

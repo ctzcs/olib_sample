@@ -44,13 +44,13 @@ swarm_init :: proc(s: ^State, count: int, width, height: f32) -> string {
 		py := height/2 + (y - f32(rows)/2) * spacing
 		item = r2d.sprite_item_make(frame, {128, 128}, {scale, 0, 0, scale, px, py},
 			{0.8 + 0.2*math.sin(x*0.05), 0.8 + 0.2*math.sin(y*0.07), 1, 1})
-		_ = mat.instance_array_set(values, slots, i, hue, {(x/f32(columns) + y/f32(rows)) * 0.5, 0, 0, 0}) // hue 沿对角线渐变
-		_ = mat.instance_array_set(values, slots, i, opacity, {1, 0, 0, 0})
+		mat.instance_array_set(values, slots, i, hue, (x/f32(columns) + y/f32(rows)) * 0.5) // hue 沿对角线渐变
+		mat.instance_array_set(values, slots, i, opacity, 1)
 		// 相位沿网格斜向推进，整片形成波纹；半径 64..256 精灵局部像素（最多一个精灵宽），速度略有差异。
 		phase := (x*0.04 + y*0.06) + 0.5*swarm_hash(u32(i))
 		speed := 1.2 + 0.6*swarm_hash(u32(i)*7 + 3)
 		radius := 64 + 192*swarm_hash(u32(i)*13 + 5)
-		_ = mat.instance_array_set(values, slots, i, motion, {phase, speed, radius, 0})
+		mat.instance_array_set(values, slots, i, motion, phase, speed, radius)
 	}
 	if !r2d.sprite_buffer_upload(&s.swarm.buffer, items, 0, values) do return "Cannot upload sprites"
 	s.swarm.count = count

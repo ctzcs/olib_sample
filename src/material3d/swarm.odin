@@ -75,12 +75,12 @@ swarm_init :: proc(s: ^State, device: ^foster.GraphicsDevice, count: int) -> str
 		translation := world.matrix4_translation((x-half)*spacing, (y-half)*spacing, (z-half)*spacing)
 		instance.world = world.matrix4_multiply(world.matrix4_scaling(scale, scale, scale), translation)
 		instance.tint = {0.75 + 0.25*jitter, 0.75 + 0.25*swarm_hash(u32(i)*3 + 1), 1, 1}
-		_ = mat.instance_array_set(values, slots, i, hue, {z/f32(side), 0, 0, 0}) // hue 沿 Z 轴渐变
+		mat.instance_array_set(values, slots, i, hue, z/f32(side)) // hue 沿 Z 轴渐变
 		// 相位 0..2π、角速度 0.6..2.0 弧度/秒、半径 0.05..SWARM_RADIUS_MAX：只在这里写一次。
 		phase := 2 * math.PI * swarm_hash(u32(i)*7 + 3)
 		speed := 0.6 + 1.4*swarm_hash(u32(i)*11 + 5)
 		radius := 0.05 + (SWARM_RADIUS_MAX - 0.05)*swarm_hash(u32(i)*13 + 7)
-		_ = mat.instance_array_set(values, slots, i, motion, {phase, speed, radius, 0})
+		mat.instance_array_set(values, slots, i, motion, phase, speed, radius)
 	}
 	// bounds 要包住运动范围：世界盒加环绕半径；局部盒按最小缩放把世界半径换算回网格空间。
 	extent := f32(side) * spacing * 0.5 + 0.3 + SWARM_RADIUS_MAX
