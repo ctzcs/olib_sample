@@ -136,9 +136,9 @@ run.bat book_ui test
   after rotating, rolling, moving and changing book depth. It checks both turn
   directions, cover occlusion, input isolation and persistence. Run `test scaled`
   and `test rotated` to verify another viewport and a different starting pose.
-- The 3D shader supports Vulkan and D3D12. Precompiled SPIR-V/DXIL files are included;
-  normal builds need no shader compiler. After editing `src/book_ui/shaders/Book.hlsl`,
-  run `powershell -File src/book_ui/shaders/build.ps1` with Vulkan SDK `dxc` on PATH.
+- The 3D shader supports Vulkan and D3D12. Precompiled shaders are included;
+  normal builds need no shader compiler. After editing `src/book_ui/shaders/Book.hlsl`, run
+  `odin run ../olib/tools/shaders -- -dir:src/book_ui/shaders` (needs SDL_shadercross on PATH).
 
 In Zed, use **task: spawn** and select **Book UI: Run** from `.zed/tasks.json`.
 
