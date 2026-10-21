@@ -52,8 +52,8 @@ main :: proc() {
 				fmt.eprintln(doc.error)
 				os.exit(1)
 			}
-			collect(&missing, known, doc.effect.label)
-			for p in doc.effect.passes do collect(&missing, known, p.label)
+			collect(&missing, known, doc.shader.label)
+			for p in doc.shader.passes do collect(&missing, known, p.label)
 			for s in doc.schemas {
 				collect(&missing, known, s.label)
 				collect(&missing, known, s.folder)
