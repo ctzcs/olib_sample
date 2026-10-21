@@ -64,7 +64,7 @@ fixture_replace :: proc(s: ^State, text, anchor, replacement: string) -> string 
 
 // 候选包已提交，选中效果的目标与 Shader 已就绪并在最近一次渲染里画出。
 preview_ready :: proc(s: ^State) -> bool {
-	return s.shader_count >= 2 && s.pending_bank == nil && s.selected_effect >= 0 && s.effects[s.selected_effect].ready
+	return s.program_count >= 2 && s.pending_bank == nil && s.selected_shader >= 0 && s.shaders[s.selected_shader].ready
 }
 
 scene_hash :: proc(s: ^State) -> u64 {
@@ -78,8 +78,8 @@ scene_hash :: proc(s: ^State) -> u64 {
 }
 
 scene_texture :: proc(s: ^State) -> ^foster.Texture {
-	if s.selected_effect >= 0 {
-		e := &s.effects[s.selected_effect]
+	if s.selected_shader >= 0 {
+		e := &s.shaders[s.selected_shader]
 		for p, i in e.desc.passes {
 			if (s.preview_pass < 0 && p.output == e.desc.output) || s.preview_pass == i {
 				target := &e.targets[i]
@@ -90,13 +90,13 @@ scene_texture :: proc(s: ^State) -> ^foster.Texture {
 	return nil
 }
 
-select_parameter_effect :: proc(s: ^State, parameter: int) {
-	for e, i in s.effects {
+select_parameter_shader :: proc(s: ^State, parameter: int) {
+	for e, i in s.shaders {
 		if len(e.desc.passes) != 1 || string(e.desc.passes[0].params) != s.parameters[parameter].name do continue
-		lab.select_effect(s.tool, i)
+		lab.select_shader(s.tool, i)
 		return
 	}
-	check(s, false, "parameter has a single-Pass effect")
+	check(s, false, "parameter has a single-Pass shader")
 }
 
 capture :: proc(s: ^State, label: string) {
@@ -148,14 +148,14 @@ validate_frame :: proc(s: ^State, app: ^foster.App) {
 		return
 	}
 	if s.smoke_step == 0 {
-		if waiting(s, preview_ready(s), "bank committed and selected effect drawn") do return
+		if waiting(s, preview_ready(s), "bank committed and selected shader drawn") do return
 		// 每个模式连续两帧，确保录下的确实是切换后的实际绘制。
 		if s.capture_index%2 == 1 {
 			names := [4]string{"fullscreen", "sprite", "sphere", "cube"}
 			capture(s, names[s.mode])
 			if s.mode == 0 do s.initial_2d_pixels = scene_hash(s)
 			if s.mode < 3 do s.mode += 1
-			select_parameter_effect(s, s.mode < 2 ? 0 : 1)
+			select_parameter_shader(s, s.mode < 2 ? 0 : 1)
 		}
 		s.capture_index += 1
 		if s.capture_index < 8 do return
@@ -164,23 +164,23 @@ validate_frame :: proc(s: ^State, app: ^foster.App) {
 			return
 		}
 		s.initial_pixels = scene_hash(s)
-		for &shader, i in s.shaders[:2] {
-			s.initial_resources[i] = rawptr(shader.fragment.Resource)
-			old_vertex := shader.vertex.Resource
-			old_fragment := shader.fragment.Resource
+		for &program, i in s.programs[:2] {
+			s.initial_resources[i] = rawptr(program.fragment.Resource)
+			old_vertex := program.vertex.Resource
+			old_fragment := program.fragment.Resource
 			invalid_probe := [1]foster.DrawCommand{{}}
-			ok, _ := foster.ShaderPairTryReplace(&shader.vertex, &shader.fragment,
-				&app.GraphicsDevice, shader.vertex.CreateInfo, shader.fragment.CreateInfo, invalid_probe[:])
-			check(s, !ok && shader.vertex.Resource == old_vertex &&
-				shader.fragment.Resource == old_fragment, "failed pipeline keeps both stages")
+			ok, _ := foster.ShaderPairTryReplace(&program.vertex, &program.fragment,
+				&app.GraphicsDevice, program.vertex.CreateInfo, program.fragment.CreateInfo, invalid_probe[:])
+			check(s, !ok && program.vertex.Resource == old_vertex &&
+				program.fragment.Resource == old_fragment, "failed pipeline keeps both stages")
 		}
 		check(s, os.write_entire_file(fmt.tprintf("%s/Palette.hlsli", s.temp_root),
 			string("this is intentionally invalid HLSL;")) == nil, "write bad include")
 		s.smoke_step = 1
 	} else if s.smoke_step == 1 {
 		if s.pending_bank == nil || s.bank_error == "" do return
-		for &shader, i in s.shaders[:2] {
-			check(s, shader.revision == 1 && rawptr(shader.fragment.Resource) == s.initial_resources[i],
+		for &program, i in s.programs[:2] {
+			check(s, program.revision == 1 && rawptr(program.fragment.Resource) == s.initial_resources[i],
 				"compile failure retains previous shader")
 		}
 		check(s, scene_hash(s) == s.initial_pixels, "compile failure retains identical scene pixels")
@@ -190,16 +190,16 @@ validate_frame :: proc(s: ^State, app: ^foster.App) {
 			transmute([]u8)fixed) == nil, "repair shared include")
 		s.smoke_step = 2
 	} else if s.smoke_step == 2 {
-		if s.pending_bank != nil || s.shaders[1].revision < 2 do return
+		if s.pending_bank != nil || s.programs[1].revision < 2 do return
 		check(s, scene_hash(s) != s.initial_pixels, "valid include visibly updates scene")
 		check(s, s.clock == 1 && s.yaw == 0.4 && lab.parameter_number(s.tool, 0, "hue") == 0.15 && lab.parameter_number(s.tool, 1, "hue") == 0.15,
 			"reload preserves time, camera and parameters")
 		capture(s, "recovered")
-		select_parameter_effect(s, 0)
+		select_parameter_shader(s, 0)
 		s.mode = 0
 		s.smoke_step = 20
 	} else if s.smoke_step == 20 {
-		if s.shaders[0].revision < 2 do return
+		if s.programs[0].revision < 2 do return
 		check(s, scene_hash(s) != s.initial_2d_pixels, "valid include visibly updates 2D scene")
 		capture(s, "recovered-2d")
 		path := fmt.tprintf("%s/Preview2D.oshader", s.temp_root)
@@ -211,19 +211,19 @@ validate_frame :: proc(s: ^State, app: ^foster.App) {
 		s.smoke_step = 3
 	} else if s.smoke_step == 3 {
 		if s.pending_bank == nil || s.bank_error == "" do return
-		check(s, s.shaders[0].revision == 2 && strings.contains(s.bank_error, "bindings changed"),
+		check(s, s.programs[0].revision == 2 && strings.contains(s.bank_error, "bindings changed"),
 			"binding changes rejected before GPU replacement")
 		check(s, os.write_entire_file(fmt.tprintf("%s/Preview2D.oshader", s.source_root), s.binding_source) == nil, "restore binding contract")
 		s.smoke_step = 4
 		s.capture_index = 0
 		lab.select_workspace(s.tool, 0)
-		s.effect_menu = true
+		s.shader_menu = true
 	} else if s.smoke_step == 4 {
 		if s.pending_bank != nil || s.elapsed < s.feature_next do return
 		s.feature_next = s.elapsed+0.06
 		switch s.capture_index {
 		case 0:
-			press_widget(s, app, "effect:Preview2D", 0.5)
+			press_widget(s, app, "shader:Preview2D", 0.5)
 		case 2, 6:
 			release_pointer(s, app)
 		case 4:
@@ -237,7 +237,7 @@ validate_frame :: proc(s: ^State, app: ^foster.App) {
 			if waiting(s, resized(s, app), "window resize applied") do return
 			check(s, s.output.Width == 1100 && s.output.Height == 825, "resize uses native output pixels")
 			capture(s, "resized")
-			select_parameter_effect(s, 1)
+			select_parameter_shader(s, 1)
 			s.mode = 3
 			s.smoke_step = 5
 			s.capture_index = -1
@@ -246,10 +246,10 @@ validate_frame :: proc(s: ^State, app: ^foster.App) {
 	} else if s.smoke_step == 5 {
 		if s.pending_bank != nil do return
 		// 切到 Preview3D 后下一次渲染才按新尺寸分配目标并画出；ready 即表示那次渲染已画出。
-		drawn := s.selected_effect >= 0 && s.effects[s.selected_effect].desc.name == "Preview3D" && s.effects[s.selected_effect].ready
+		drawn := s.selected_shader >= 0 && s.shaders[s.selected_shader].desc.name == "Preview3D" && s.shaders[s.selected_shader].ready
 		if waiting(s, drawn, "Preview3D drawn at the resized output") do return
 		s.initial_pixels = scene_hash(s)
-		s.parameter_revision = s.shaders[1].revision
+		s.parameter_revision = s.programs[1].revision
 		path := fmt.tprintf("%s/Preview3D.oshader", s.source_root)
 		bytes, _ := os.read_entire_file(path, context.temp_allocator)
 		s.parameter_source = strings.clone(string(bytes))
@@ -258,7 +258,7 @@ validate_frame :: proc(s: ^State, app: ^foster.App) {
 		s.smoke_step = 6
 	} else if s.smoke_step == 6 {
 		if s.parameter_watch.status != .Error do return
-		check(s, s.shaders[1].revision == s.parameter_revision && scene_hash(s) == s.initial_pixels,
+		check(s, s.programs[1].revision == s.parameter_revision && scene_hash(s) == s.initial_pixels,
 			"invalid property declaration keeps both schema and GPU pixels")
 		capture(s, "parameter-error")
 		text := fixture_replace(s, s.parameter_source, "Properties\n    {", "Properties\n    {\n        _gain (\"亮度\", Range(0,1)) = 0.5")
@@ -272,7 +272,7 @@ validate_frame :: proc(s: ^State, app: ^foster.App) {
 			return
 		}
 		if s.parameters[1].has_pending || lab.parameter_number(s.tool, 1, "gain") != 0.5 do return
-		check(s, s.shaders[1].revision > s.parameter_revision && scene_hash(s) != s.initial_pixels,
+		check(s, s.programs[1].revision > s.parameter_revision && scene_hash(s) != s.initial_pixels,
 			"new generated layout and default visibly update 3D")
 		check(s, lab.parameter_number(s.tool, 1, "strength") == 0.65 && lab.parameter_number(s.tool, 1, "hue") == 0.15,
 			"field reorder retains values by stable ID")
@@ -290,10 +290,10 @@ validate_frame :: proc(s: ^State, app: ^foster.App) {
 			check(s, p.values[i].texture == "red.png" && p.textures[0].Resource != nil, "texture replacement succeeds")
 		}
 		s.initial_pixels = scene_hash(s)
-		s.parameter_revision = s.shaders[1].revision
+		s.parameter_revision = s.programs[1].revision
 		s.smoke_step = 8
 	} else if s.smoke_step == 8 {
-		check(s, scene_hash(s) != s.initial_pixels && s.shaders[1].revision == s.parameter_revision,
+		check(s, scene_hash(s) != s.initial_pixels && s.programs[1].revision == s.parameter_revision,
 			"texture changes pixels without recompiling")
 		text := `Shader "Extra" {
 Properties { _amount ("Amount", Range(0,1)) = 0.75 }
@@ -313,11 +313,11 @@ ENDHLSL
 		extra := lab.bank_index(s.bank, "Extra_main")
 		if extra < 0 || s.pending_bank != nil do return
 		check(s, s.parameters[extra].available, "discovers third shader without restarting")
-		select_parameter_effect(s, extra)
+		select_parameter_shader(s, extra)
 		s.mode = 0
 		s.smoke_step = 11
 	} else if s.smoke_step == 11 {
-		if !s.effects[s.selected_effect].ready do return
+		if !s.shaders[s.selected_shader].ready do return
 		texture := scene_texture(s)
 		pixels := foster.TextureDownloadData(texture)
 		defer delete(pixels)
@@ -457,21 +457,21 @@ widget_present :: proc(s: ^State, id: string) -> bool {
 shot_material_sprite :: proc(s: ^State) -> bool {
 	if s.material_step == 0 {
 		index := -1
-		for e, i in s.effects {
+		for e, i in s.shaders {
 			if e.desc.name == "SpriteShadow" do index = i
 		}
-		check(s, index >= 0, "SpriteShadow effect exists")
+		check(s, index >= 0, "SpriteShadow shader exists")
 		if index < 0 do return true
-		lab.select_effect(s.tool, index)
+		lab.select_shader(s.tool, index)
 		s.material_step = 1
 	}
-	for p, i in s.parameters[:s.shader_count] {
+	for p, i in s.parameters[:s.program_count] {
 		if !strings.has_prefix(p.name, "SpriteShadow_") do continue
-		check(s, s.shaders[i].status != .Error, fmt.tprintf("%s compiles: %s", p.name, s.shaders[i].diagnostic))
+		check(s, s.programs[i].status != .Error, fmt.tprintf("%s compiles: %s", p.name, s.programs[i].diagnostic))
 	}
 	if s.failed do return true
 	// 选中后的下一次渲染才分配目标、提交两个 Shader；ready 表示所用 Shader 已生效且那次渲染画出了预览。
-	if waiting(s, s.effects[s.selected_effect].ready, "SpriteShadow material preview drawn") do return false
+	if waiting(s, s.shaders[s.selected_shader].ready, "SpriteShadow material preview drawn") do return false
 	check(s, s.bank_error == "", fmt.tprintf("material preview binds: %s", s.bank_error))
 	capture(s, "material-sprite")
 	return true

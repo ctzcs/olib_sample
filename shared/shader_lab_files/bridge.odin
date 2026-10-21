@@ -120,10 +120,10 @@ update :: proc(b: ^Bridge, tool: ^lab.Session) {
 	if request.action == .Texture {
 		p.filter = {"Images", "png;jpg;jpeg;qoi"}
 	} else {
-		p.filter = {request.effect != "" ? "Model material" : "Shader preset", "json"}
+		p.filter = {request.shader != "" ? "Model material" : "Shader preset", "json"}
 	}
 	if request.action == .Save_Preset {
-		SDL.ShowSaveFileDialog(dialog_callback, p, b.window, &p.filter, 1, request.effect != "" ? "material.json" : "shader-preset.json")
+		SDL.ShowSaveFileDialog(dialog_callback, p, b.window, &p.filter, 1, request.shader != "" ? "material.json" : "shader-preset.json")
 	} else {
 		SDL.ShowOpenFileDialog(dialog_callback, p, b.window, &p.filter, 1, nil, false)
 	}

@@ -27,7 +27,7 @@ texture_hash :: proc(texture: ^foster.Texture) -> u64 {
 }
 
 graph_texture :: proc(s: ^State) -> ^foster.Texture {
-	e := &s.effects[s.selected_effect]
+	e := &s.shaders[s.selected_shader]
 	return foster.TargetAttachment(&e.targets[0].buffers[e.current])
 }
 
@@ -35,74 +35,74 @@ validate_multipass :: proc(s: ^State, app: ^foster.App) {
 	if s.elapsed < s.feature_next do return
 	s.feature_next = s.elapsed+0.06
 	graph_index, graph_3d_index := -1, -1
-	for effect, i in s.effects {
-		if effect.desc.name == "Trail2D" do graph_index = i
-		if effect.desc.name == "Trail3D" do graph_3d_index = i
+	for shader, i in s.shaders {
+		if shader.desc.name == "Trail2D" do graph_index = i
+		if shader.desc.name == "Trail3D" do graph_3d_index = i
 	}
 	if graph_index < 0 || graph_3d_index < 0 do return
 	path := fmt.tprintf("%s/Trail2D.oshader", s.source_root)
-	shader := fmt.tprintf("%s/Trail3D.oshader", s.temp_root)
+	program := fmt.tprintf("%s/Trail3D.oshader", s.temp_root)
 	switch s.smoke_step {
 	case 0:
 		if s.parameter_watch.status == .Error {
 			check(s, false, s.parameter_watch.diagnostic)
 			return
 		}
-		if s.shader_count != 10 || s.pending_bank != nil do return
+		if s.program_count != 10 || s.pending_bank != nil do return
 		if s.capture_index == 0 {
-			select_parameter_effect(s, 0)
+			select_parameter_shader(s, 0)
 			s.mode = 0
 			s.capture_index = 1
 			return
 		}
-		check(s, s.shaders[0].revision > 0 && s.selected_effect >= 0 &&
-			len(s.effects[s.selected_effect].desc.passes) == 1 && scene_texture(s).Resource != nil,
-			"single-file Shader renders through an effect")
+		check(s, s.programs[0].revision > 0 && s.selected_shader >= 0 &&
+			len(s.shaders[s.selected_shader].desc.passes) == 1 && scene_texture(s).Resource != nil,
+			"single-file Shader renders through an shader")
 		capture(s, "multipass-single")
-		check(s, len(s.effects) == 4 && s.effects[graph_index].order[0] == 1 && s.effects[graph_index].order[3] == 0, "oshader effects sorted by dependencies")
-		lab.select_effect(s.tool, graph_index)
+		check(s, len(s.shaders) == 4 && s.shaders[graph_index].order[0] == 1 && s.shaders[graph_index].order[3] == 0, "oshader shaders sorted by dependencies")
+		lab.select_shader(s.tool, graph_index)
 	case 1:
-		e := &s.effects[graph_index]
+		e := &s.shaders[graph_index]
 		check(s, e.targets[2].buffers[0].Width == int(s.viewport.Width*0.5), "half-resolution RenderTexture")
 		check(s, foster.TargetAttachment(&e.targets[1].buffers[0]).Format == .R16G16B16A16_FLOAT, "HDR RenderTexture")
 		check(s, e.targets[0].buffers[0].Attachments[0].Resource != e.targets[0].buffers[1].Attachments[0].Resource, "feedback has distinct GPU textures")
 		s.graph_hash = texture_hash(graph_texture(s))
 		capture(s, "multipass-2d")
 	case 2:
-		check(s, s.effects[graph_index].frame == 0 && texture_hash(graph_texture(s)) == s.graph_hash, "paused feedback is stable")
+		check(s, s.shaders[graph_index].frame == 0 && texture_hash(graph_texture(s)) == s.graph_hash, "paused feedback is stable")
 		lab.step(s.tool)
 	case 3:
-		check(s, s.effects[graph_index].frame == 1 && texture_hash(graph_texture(s)) != s.graph_hash, "one step advances feedback exactly once")
+		check(s, s.shaders[graph_index].frame == 1 && texture_hash(graph_texture(s)) != s.graph_hash, "one step advances feedback exactly once")
 		s.initial_pixels = texture_hash(graph_texture(s))
 	case 4:
-		check(s, s.effects[graph_index].frame == 1 && texture_hash(graph_texture(s)) == s.initial_pixels, "pause preserves stepped output")
+		check(s, s.shaders[graph_index].frame == 1 && texture_hash(graph_texture(s)) == s.initial_pixels, "pause preserves stepped output")
 		lab.reset_history(s.tool)
 	case 5:
-		check(s, s.effects[graph_index].frame == 0 && texture_hash(graph_texture(s)) == s.graph_hash, "reset restores deterministic initial feedback")
-		lab.select_effect(s.tool, graph_3d_index)
+		check(s, s.shaders[graph_index].frame == 0 && texture_hash(graph_texture(s)) == s.graph_hash, "reset restores deterministic initial feedback")
+		lab.select_shader(s.tool, graph_3d_index)
 	case 6:
-		check(s, len(s.effects[graph_3d_index].targets[1].buffers[0].Attachments) == 2, "3D model pass has depth")
+		check(s, len(s.shaders[graph_3d_index].targets[1].buffers[0].Attachments) == 2, "3D model pass has depth")
 		capture(s, "multipass-3d")
 		resize_window(s, app, {960, 720})
 	case 7:
 		if waiting(s, resized(s, app), "window resize applied") do return
-		check(s, s.effects[graph_3d_index].targets[0].buffers[0].Width == int(s.viewport.Width), "resize rebuilds feedback targets")
+		check(s, s.shaders[graph_3d_index].targets[0].buffers[0].Width == int(s.viewport.Width), "resize rebuilds feedback targets")
 		s.graph_bank = s.bank
 		bad := fixture_replace(s, s.graph_source, "Previous", "Current")
 		check(s, os.write_entire_file(path, transmute([]u8)bad) == nil, "write cycle fixture")
 	case 8:
 		if s.parameter_watch.status != .Error do return
-		check(s, rawptr(s.bank) == s.graph_bank && strings.contains(s.parameter_watch.diagnostic, "cycle"), "cycle rejected without replacing live effect")
+		check(s, rawptr(s.bank) == s.graph_bank && strings.contains(s.parameter_watch.diagnostic, "cycle"), "cycle rejected without replacing live shader")
 		bad := fixture_replace(s, s.graph_shader, "float3 current =", "invalid_hlsl_here float3 current =")
-		check(s, os.write_entire_file(shader, bad) == nil, "write invalid shader fixture")
+		check(s, os.write_entire_file(program, bad) == nil, "write invalid shader fixture")
 		check(s, os.write_entire_file(path, transmute([]u8)s.graph_source) == nil, "restore oshader graph")
 	case 9:
 		if s.pending_bank == nil || s.bank_error == "" do return
 		check(s, rawptr(s.bank) == s.graph_bank, "failed candidate shader retains whole live bank")
-		check(s, os.write_entire_file(shader, transmute([]u8)s.graph_shader) == nil, "restore valid shader")
+		check(s, os.write_entire_file(program, transmute([]u8)s.graph_shader) == nil, "restore valid shader")
 	case 10:
 		if rawptr(s.bank) == s.graph_bank || s.pending_bank != nil do return
-		check(s, s.bank_error == "" && s.selected_effect == graph_3d_index && len(s.effects) == 4, "recovered candidate commits atomically and keeps selection")
+		check(s, s.bank_error == "" && s.selected_shader == graph_3d_index && len(s.shaders) == 4, "recovered candidate commits atomically and keeps selection")
 		capture(s, "multipass-recovered")
 		finish(s, app, "PASS: single Shader, oshader graph, HDR/MSAA/half-size, 2D/3D, feedback, pause/step/reset/resize, cycle and shader rollback/recovery")
 	}

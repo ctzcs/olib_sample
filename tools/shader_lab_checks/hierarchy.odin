@@ -15,33 +15,33 @@ validate_hierarchy :: proc(s: ^State, app: ^foster.App) {
 		check(s, false, s.parameter_watch.diagnostic)
 		return
 	}
-	if s.shader_count < 10 || s.pending_bank != nil do return
+	if s.program_count < 10 || s.pending_bank != nil do return
 	graph_index, graph_3d_index := -1, -1
-	for effect, i in s.effects {
-		if effect.desc.name == "Trail2D" do graph_index = i
-		if effect.desc.name == "Trail3D" do graph_3d_index = i
+	for shader, i in s.shaders {
+		if shader.desc.name == "Trail2D" do graph_index = i
+		if shader.desc.name == "Trail3D" do graph_3d_index = i
 	}
-	e := &s.effects[graph_index]
+	e := &s.shaders[graph_index]
 	p := &s.parameters[lab.bank_index(s.bank, "Trail2D_blur_x")]
 	target := &e.targets[2].buffers[0]
 	switch s.smoke_step {
 	case 0:
-		check(s, s.selected_effect == 0 && s.preview_pass == -1, "start with effect and final output")
+		check(s, s.selected_shader == 0 && s.preview_pass == -1, "start with shader and final output")
 		check(s, e.desc.name == "Trail2D" && e.desc.label == "二维拖尾" &&
 			p.live.label == "横向模糊", "Pass labels independent of IDs")
-		for effect in s.effects {
-			for pass in effect.desc.passes {
+		for shader in s.shaders {
+			for pass in shader.desc.passes {
 				for cp in pass.label {
 					_, found := foster.MsdfFontFindCharacter(s.font, int(cp))
 					check(s, found, "Chinese pass glyph in true MSDF atlas")
 				}
 			}
 		}
-		lab.select_effect(s.tool, graph_index, 2)
+		lab.select_shader(s.tool, graph_index, 2)
 	case 1:
 		s.graph_hash = texture_hash(foster.TargetAttachment(target))
 		capture(s, "hierarchy-2d")
-		press_widget(s, app, "shader-folder:Trail2D:blur_x", 0.5)
+		press_widget(s, app, "group-folder:Trail2D:blur_x", 0.5)
 	case 2, 4, 6, 8:
 		release_pointer(s, app)
 	case 3:
@@ -68,15 +68,15 @@ validate_hierarchy :: proc(s: ^State, app: ^foster.App) {
 		s.graph_bank = s.bank
 		renamed := fixture_replace(s, s.graph_source, "二维拖尾", "拖尾二维")
 		check(s, os.write_entire_file(fmt.tprintf("%s/Trail2D.oshader", s.source_root), transmute([]u8)renamed) == nil,
-			"rename effect label fixture")
+			"rename shader label fixture")
 	case 10:
 		if rawptr(s.bank) == s.graph_bank do return
-		if s.selected_effect != graph_index || s.inspect_pass != 2 || e.desc.label != "拖尾二维" ||
+		if s.selected_shader != graph_index || s.inspect_pass != 2 || e.desc.label != "拖尾二维" ||
 			e.enabled[2] || e.expanded[2] || !p.folder_closed || p.values[2].number[0] != 4.5 {
 			fmt.printf("Reload state: selected=%d graph=%d pass=%d label=%s enabled=%v expanded=%v folder=%v value=%v\n",
-				s.selected_effect, graph_index, s.inspect_pass, e.desc.label, e.enabled[2], e.expanded[2], p.folder_closed, p.values[2].number[0])
+				s.selected_shader, graph_index, s.inspect_pass, e.desc.label, e.enabled[2], e.expanded[2], p.folder_closed, p.values[2].number[0])
 		}
-		check(s, s.selected_effect == graph_index && s.inspect_pass == 2 && e.desc.label == "拖尾二维" &&
+		check(s, s.selected_shader == graph_index && s.inspect_pass == 2 && e.desc.label == "拖尾二维" &&
 			!e.enabled[2] && !e.expanded[2] && p.folder_closed && p.values[2].number[0] == 4.5,
 			"display-name reload preserves stable-ID selection, toggles and values")
 		lab.set_pass_enabled(s.tool, graph_index, 1, false)
@@ -87,26 +87,26 @@ validate_hierarchy :: proc(s: ^State, app: ^foster.App) {
 		for b in bytes do clear = clear && b == 0
 		check(s, clear, "disabled source pass clears output rather than leaving stale pixels")
 		p.folder_closed = false
-		lab.select_effect(s.tool, graph_3d_index, 2)
+		lab.select_shader(s.tool, graph_3d_index, 2)
 	case 12:
 		check(s, s.ctx.error_count == 0 && !s.ctx.pool_overflow, "hierarchy layout has no Clay errors")
 		capture(s, "hierarchy-3d")
-		press_widget(s, app, "effect-menu", 0.5)
+		press_widget(s, app, "shader-menu", 0.5)
 	case 13, 15, 17, 20, 22, 26:
 		release_pointer(s, app)
 	case 14:
-		check(s, widget_present(s, "effect:Trail3D") &&
-			!widget_present(s, "effect:Trail2D"), "effect menu isolates 3D workspace")
-		check(s, !widget_present(s, "single-shaders") && len(s.effects) == 4,
-			"only four explicit effects are listed for ten compiled Pass programs")
-		for effect in s.effects {
-			check(s, effect.desc.name != "TrailBlur" && effect.desc.name != "TrailFeedback",
-				"shared Shader resources do not create effects")
+		check(s, widget_present(s, "shader:Trail3D") &&
+			!widget_present(s, "shader:Trail2D"), "shader menu isolates 3D workspace")
+		check(s, !widget_present(s, "single-shaders") && len(s.shaders) == 4,
+			"only four explicit shaders are listed for ten compiled Pass programs")
+		for shader in s.shaders {
+			check(s, shader.desc.name != "TrailBlur" && shader.desc.name != "TrailFeedback",
+				"shared Shader resources do not create shaders")
 		}
-		press_widget(s, app, "effect:Preview3D", 0.5)
+		press_widget(s, app, "shader:Preview3D", 0.5)
 	case 16:
-		check(s, s.selected_effect >= 0 && s.effects[s.selected_effect].desc.name == "Preview3D" &&
-			len(s.effects[s.selected_effect].desc.passes) == 1 && s.inspect_pass == 0 &&
+		check(s, s.selected_shader >= 0 && s.shaders[s.selected_shader].desc.name == "Preview3D" &&
+			len(s.shaders[s.selected_shader].desc.passes) == 1 && s.inspect_pass == 0 &&
 			!widget_present(s, "pass-preview"), "explicit single Pass has no redundant output toggle")
 		pixels := foster.TextureDownloadData(scene_texture(s))
 		defer delete(pixels)
@@ -114,12 +114,12 @@ validate_hierarchy :: proc(s: ^State, app: ^foster.App) {
 		for value, i in pixels {
 			if i >= 4 && value != pixels[i%4] do varied = true
 		}
-		check(s, varied, "single Pass effect renders model pixels rather than an empty target")
-		capture(s, "unified-effect")
+		check(s, varied, "single Pass shader renders model pixels rather than an empty target")
+		capture(s, "unified-shader")
 	case 18:
-		check(s, s.ctx.error_count == 0 && !s.ctx.pool_overflow, "unified effect layout has no errors")
+		check(s, s.ctx.error_count == 0 && !s.ctx.pool_overflow, "unified shader layout has no errors")
 		resize_window(s, app, {1696, 1080})
-		lab.select_effect(s.tool, graph_3d_index, 2)
+		lab.select_shader(s.tool, graph_3d_index, 2)
 		s.paused = false
 		s.feature_next = s.elapsed+0.6
 	case 19:
@@ -129,7 +129,7 @@ validate_hierarchy :: proc(s: ^State, app: ^foster.App) {
 		press_widget(s, app, "pass-preview", 0.5)
 	case 21:
 		check(s, s.preview_pass == 2, "explicit intermediate preview button at fractional UI scale")
-		press_widget(s, app, "effect-final", 0.5)
+		press_widget(s, app, "shader-final", 0.5)
 	case 23:
 		check(s, s.preview_pass == -1 && s.inspect_pass == 2, "return to final keeps inspected parameters")
 		resize_window(s, app, {640, 800})
@@ -148,7 +148,7 @@ validate_hierarchy :: proc(s: ^State, app: ^foster.App) {
 			"narrow panel can yield full preview without layout errors")
 		resize_window(s, app, {1280, 800})
 		s.sidebar_collapsed = false
-		lab.select_effect(s.tool, graph_3d_index, 1)
+		lab.select_shader(s.tool, graph_3d_index, 1)
 		s.mode = 3
 		s.yaw = 1.25
 		s.paused = true
@@ -169,22 +169,22 @@ validate_hierarchy :: proc(s: ^State, app: ^foster.App) {
 	case 30, 35, 38, 41:
 		release_pointer(s, app)
 	case 31:
-		check(s, s.workspace == 0 && s.selected_effect == graph_index && s.inspect_pass == 2 && s.mode == 0,
-			"2D workspace restores its own selected effect and Pass")
+		check(s, s.workspace == 0 && s.selected_shader == graph_index && s.inspect_pass == 2 && s.mode == 0,
+			"2D workspace restores its own selected shader and Pass")
 		check(s, clay.GetElementData(clay.ID("pass:blur_x")).boundingBox.y == s.fixed_pass_y &&
 			clay.GetElementData(clay.ID("inspector-parameters")).boundingBox.y == s.fixed_tabs_y,
 			"workspace and parameter length changes leave sidebar anchors fixed")
-		press_widget(s, app, "effect-menu", 0.5)
+		press_widget(s, app, "shader-menu", 0.5)
 	case 32:
 		release_pointer(s, app)
 	case 33:
 		check(s, clay.GetElementData(clay.ID("pass:blur_x")).boundingBox.y == s.fixed_pass_y,
-			"effect popup does not displace the Pass list")
-		s.effect_menu = false
+			"shader popup does not displace the Pass list")
+		s.shader_menu = false
 	case 34:
 		press_widget(s, app, "workspace:3d", 0.5)
 	case 36:
-		check(s, s.workspace == 1 && s.selected_effect == graph_3d_index && s.inspect_pass == 1 && s.mode == 3 && s.yaw == 1.25,
+		check(s, s.workspace == 1 && s.selected_shader == graph_3d_index && s.inspect_pass == 1 && s.mode == 3 && s.yaw == 1.25,
 			"3D workspace restores independent model and camera")
 		data := clay.GetScrollContainerData(clay.ID(lab.inspector_scroll_id(s.tool)))
 		check(s, data.found && data.scrollPosition.y == s.saved_scroll_y,
@@ -201,7 +201,7 @@ validate_hierarchy :: proc(s: ^State, app: ^foster.App) {
 		data := clay.GetScrollContainerData(clay.ID(lab.inspector_scroll_id(s.tool)))
 		check(s, !s.preview_settings && data.found && data.scrollPosition.y == s.saved_scroll_y,
 			"parameter tab restores scroll independently of preview settings")
-		select_parameter_effect(s, 1)
+		select_parameter_shader(s, 1)
 		s.graph_bank = s.bank
 	case 43:
 		// 显式单 Pass 扩成两个 Pass，保留 main ID。
@@ -219,16 +219,16 @@ validate_hierarchy :: proc(s: ^State, app: ^foster.App) {
 		second, _ := strings.replace_all(strings.trim_space(body[start:]), "Pass \"main\"", "Pass \"second\"", context.temp_allocator)
 		first := fixture_replace(s, body, "Draw Preview_Model", "Draw Preview_Model\n        Output \"base\"")
 		expanded := fmt.tprintf("%s%s%s%s}%s", first, newline, second, newline, newline)
-		check(s, os.write_entire_file(path, expanded) == nil, "extend explicit effect with another Pass")
+		check(s, os.write_entire_file(path, expanded) == nil, "extend explicit shader with another Pass")
 	case 44:
 		if rawptr(s.bank) == s.graph_bank do return
-		chosen := &s.effects[s.selected_effect]
+		chosen := &s.shaders[s.selected_shader]
 		check(s, chosen.desc.name == "Preview3D" && len(chosen.desc.passes) == 2 &&
 			chosen.desc.passes[s.inspect_pass].id == "main" && s.workspace == 1 &&
-			len(s.effects) == 4 && s.shader_count == 11 && lab.parameter_number(s.tool, 1, "hue") == 0.15,
-			"single to multi-Pass edit retains effect identity, selection and values")
+			len(s.shaders) == 4 && s.program_count == 11 && lab.parameter_number(s.tool, 1, "hue") == 0.15,
+			"single to multi-Pass edit retains shader identity, selection and values")
 		check(s, widget_present(s, "pass-preview"), "multiple Passes expose intermediate preview")
-		finish(s, app, "PASS: explicit effects only, Pass programs excluded, single/multi-Pass rendering, workspace/scroll restoration and scaled MSDF input")
+		finish(s, app, "PASS: explicit shaders only, Pass programs excluded, single/multi-Pass rendering, workspace/scroll restoration and scaled MSDF input")
 	}
 	s.smoke_step += 1
 }

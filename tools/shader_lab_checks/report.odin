@@ -1,7 +1,7 @@
 package shader_lab_checks
 
 // 失败诊断：每次 Update 记录窗口与候选包的状态变化，第一次失败把完整状态写进
-// library/tmp/shader-lab-<模式>-failure.txt（同模式复用文件名，开始运行时删除旧报告）。
+// library/tmp/program-lab-<模式>-failure.txt（同模式复用文件名，开始运行时删除旧报告）。
 import "core:fmt"
 import "core:os"
 import "core:strings"
@@ -59,7 +59,7 @@ watch :: proc(s: ^State, app: ^foster.App) {
 	}
 	if rawptr(s.bank) != w.bank {
 		w.bank = s.bank
-		log_event(s, "live bank: %d shaders, %d effects", s.shader_count, len(s.effects))
+		log_event(s, "live bank: %d shaders, %d shaders", s.program_count, len(s.shaders))
 	}
 	if rawptr(s.pending_bank) != w.pending {
 		w.pending = s.pending_bank
@@ -117,8 +117,8 @@ report_state :: proc(b: ^strings.Builder, s: ^State, message: string) {
 		s.output.Width, s.output.Height, s.region, s.viewport, s.ui_scale, s.compact, s.sidebar_collapsed)
 	fmt.sbprintf(b, "ui: pointer %.1f,%.1f down %v, active %d, errors %d, overflow %v, color picker %v\n",
 		s.ctx.pointer_x, s.ctx.pointer_y, s.ctx.pointer_down, s.ctx.active_id, s.ctx.error_count, s.ctx.pool_overflow, s.color_picker.open)
-	fmt.sbprintf(b, "session: workspace %d (empty %v), effect %d, inspect pass %d, preview pass %d, group %d, mode %d, paused %v, clock %.3f, yaw %.3f\n",
-		s.workspace, s.workspace_empty, s.selected_effect, s.inspect_pass, s.preview_pass, s.selected, s.mode, s.paused, s.clock, s.yaw)
+	fmt.sbprintf(b, "session: workspace %d (empty %v), shader %d, inspect pass %d, preview pass %d, group %d, mode %d, paused %v, clock %.3f, yaw %.3f\n",
+		s.workspace, s.workspace_empty, s.selected_shader, s.inspect_pass, s.preview_pass, s.selected, s.mode, s.paused, s.clock, s.yaw)
 	report_bank(b, "live bank", s.bank)
 	report_bank(b, "candidate bank", s.pending_bank)
 	fmt.sbprintf(b, "bank error: %q\n", s.bank_error)
@@ -131,16 +131,16 @@ report_state :: proc(b: ^strings.Builder, s: ^State, message: string) {
 @(private="file")
 report_bank :: proc(b: ^strings.Builder, label: string, bank: ^lab.Parameter_Bank) {
 	if bank == nil do return
-	fmt.sbprintf(b, "%s: %d shaders, %d effects, fingerprint %x, candidate failed %v\n", label,
-		bank.shader_count, len(bank.effects), bank.fingerprint, bank.candidate_failed)
-	for p, i in bank.parameters[:bank.shader_count] {
-		shader := &bank.shaders[i]
-		fmt.sbprintf(b, "  shader %s: %v revision %d used %v", p.name, shader.status, shader.revision, bank.shader_used[i])
-		if shader.diagnostic != "" do fmt.sbprintf(b, " diagnostic %q", shader.diagnostic)
+	fmt.sbprintf(b, "%s: %d shaders, %d shaders, fingerprint %x, candidate failed %v\n", label,
+		bank.program_count, len(bank.shaders), bank.fingerprint, bank.candidate_failed)
+	for p, i in bank.parameters[:bank.program_count] {
+		program := &bank.programs[i]
+		fmt.sbprintf(b, "  shader %s: %v revision %d used %v", p.name, program.status, program.revision, bank.program_used[i])
+		if program.diagnostic != "" do fmt.sbprintf(b, " diagnostic %q", program.diagnostic)
 		fmt.sbprintf(b, "\n")
 	}
-	for &e in bank.effects {
-		fmt.sbprintf(b, "  effect %s: ready %v, frame %d, current %d", e.desc.name, e.ready, e.frame, e.current)
+	for &e in bank.shaders {
+		fmt.sbprintf(b, "  shader %s: ready %v, frame %d, current %d", e.desc.name, e.ready, e.frame, e.current)
 		for &target, i in e.targets {
 			buffer := &target.buffers[0]
 			fmt.sbprintf(b, "; pass %d %dx%d x%d enabled %v expanded %v", i, buffer.Width, buffer.Height,

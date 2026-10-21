@@ -24,15 +24,15 @@ color_test_move :: proc(s: ^State, app: ^foster.App, id: string, x, y: f32, down
 }
 
 validate_color_frame :: proc(s: ^State, app: ^foster.App) {
-	if waiting(s, preview_ready(s), "bank committed and selected effect drawn") do return
+	if waiting(s, preview_ready(s), "bank committed and selected shader drawn") do return
 	step := s.capture_index
 	switch step {
 	case 0:
-		select_parameter_effect(s, 1)
+		select_parameter_shader(s, 1)
 		s.mode = 2
 	case 2:
 		s.initial_pixels = scene_hash(s)
-		s.parameter_revision = s.shaders[1].revision
+		s.parameter_revision = s.programs[1].revision
 		press_widget(s, app, "Preview3D_main:tint:color", 0.5)
 	case 4, 8, 12, 17, 22, 26, 30, 34, 40, 45, 49, 55, 59, 63, 69, 73, 81, 85:
 		release_pointer(s, app)
@@ -64,7 +64,7 @@ validate_color_frame :: proc(s: ^State, app: ^foster.App) {
 	case 36:
 		value := color_test_value(s, 1)
 		check(s, !s.color_picker.open && value[0] > 0.95 && value[1] < 0.25 && value[3] == 1, "apply keeps chosen preset")
-		check(s, s.shaders[1].revision == s.parameter_revision, "color edits do not compile shaders")
+		check(s, s.programs[1].revision == s.parameter_revision, "color edits do not compile shaders")
 	case 38:
 		press_widget(s, app, "Preview3D_main:tint:color", 0.5)
 	case 42:
@@ -81,7 +81,7 @@ validate_color_frame :: proc(s: ^State, app: ^foster.App) {
 			"second cancel restores accepted color")
 		check(s, s.ctx.error_count == 0 && !s.ctx.pool_overflow, "palette layout remains valid")
 		capture(s, "palette-applied")
-		select_parameter_effect(s, 0)
+		select_parameter_shader(s, 0)
 		s.mode = 1
 	case 53:
 		s.initial_2d_pixels = scene_hash(s)

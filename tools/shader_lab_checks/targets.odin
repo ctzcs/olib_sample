@@ -9,12 +9,12 @@ import clay "olib:thirdparty/clay-odin"
 
 check_selected_targets :: proc(s: ^State, bank: ^lab.Parameter_Bank, selected: int) {
 	if bank == nil do return
-	for effect, i in bank.effects {
-		for target in effect.targets {
+	for shader, i in bank.shaders {
+		for target in shader.targets {
 			for buffer, j in target.buffers {
 				if i != selected || (j == 1 && !target.history) {
 					check(s, len(buffer.Attachments) == 0 && buffer.Width == 0,
-						"unselected effect has no RenderTexture, resolve or depth attachments")
+						"unselected shader has no RenderTexture, resolve or depth attachments")
 				}
 			}
 		}
@@ -33,45 +33,45 @@ targets_declarations :: proc(s: ^State, enabled: bool) {
 validate_targets :: proc(s: ^State, app: ^foster.App) {
 	if s.elapsed < s.feature_next do return
 	s.feature_next = s.elapsed+0.1
-	check_selected_targets(s, s.bank, s.selected_effect)
-	if s.pending_bank != nil do check_selected_targets(s, s.pending_bank, lab.bank_selected_effect(s.tool, s.pending_bank))
+	check_selected_targets(s, s.bank, s.selected_shader)
+	if s.pending_bank != nil do check_selected_targets(s, s.pending_bank, lab.bank_selected_shader(s.tool, s.pending_bank))
 	if s.parameter_watch.status == .Error || s.bank_error != "" {
 		check(s, false, fmt.tprintf("%s %s", s.parameter_watch.diagnostic, s.bank_error))
 		return
 	}
-	if s.pending_bank != nil || (s.shader_count != 10 && s.smoke_step != 7) do return
+	if s.pending_bank != nil || (s.program_count != 10 && s.smoke_step != 7) do return
 	switch s.smoke_step {
 	case 0:
-		check(s, s.selected_effect >= 0 && len(s.effects[s.selected_effect].targets) == 1 &&
+		check(s, s.selected_shader >= 0 && len(s.shaders[s.selected_shader].targets) == 1 &&
 			scene_texture(s).Resource != nil, "single Pass supplies preview target")
 		capture(s, "targets-2d")
-		select_parameter_effect(s, 1)
+		select_parameter_shader(s, 1)
 	case 1:
-		e := &s.effects[s.selected_effect]
+		e := &s.shaders[s.selected_shader]
 		check(s, len(e.targets[0].buffers[0].Attachments) == 2 && scene_texture(s).SampleCount == .Four,
 			"3D Pass owns depth and MSAA")
 		capture(s, "targets-3d")
-		for effect, i in s.effects {
-			if effect.desc.name == "Trail3D" do lab.select_effect(s.tool, i)
+		for shader, i in s.shaders {
+			if shader.desc.name == "Trail3D" do lab.select_shader(s.tool, i)
 		}
 		resize_window(s, app, {960, 720})
 	case 2:
 		if waiting(s, resized(s, app), "window resize applied") do return
 		// 单步要在已就绪的效果上推进，否则那次渲染只会丢弃单步请求。
-		if waiting(s, s.effects[s.selected_effect].ready, "Trail3D drawn at the resized output") do return
-		e := &s.effects[s.selected_effect]
+		if waiting(s, s.shaders[s.selected_shader].ready, "Trail3D drawn at the resized output") do return
+		e := &s.shaders[s.selected_shader]
 		check(s, len(e.targets) == 4 && e.targets[0].history &&
 			e.targets[0].buffers[0].Width == int(s.viewport.Width) &&
 			e.targets[2].buffers[0].Width == int(s.viewport.Width*0.5), "resized multipass uses declared target sizes")
 		capture(s, "targets-multipass")
 		lab.step(s.tool)
 	case 3:
-		check(s, s.effects[s.selected_effect].frame == 1, "feedback advances before switching away")
-		s.effects[s.selected_effect].expanded[2] = false
+		check(s, s.shaders[s.selected_shader].frame == 1, "feedback advances before switching away")
+		s.shaders[s.selected_shader].expanded[2] = false
 		s.parameters[lab.bank_index(s.bank, "Trail3D_blur_x")].values[2].number[0] = 7
 		lab.select_workspace(s.tool, 0)
 	case 4:
-		check(s, s.selected_effect >= 0 && s.effects[s.selected_effect].ready, "2D workspace allocates only its selected effect")
+		check(s, s.selected_shader >= 0 && s.shaders[s.selected_shader].ready, "2D workspace allocates only its selected shader")
 		press_widget(s, app, "workspace:3d", 0.5)
 	case 5:
 		if s.capture_index == 0 {
@@ -80,29 +80,29 @@ validate_targets :: proc(s: ^State, app: ^foster.App) {
 			return // 按钮在消费松开的那次渲染的 panel 中切换，下一轮再读取结果。
 		}
 		// 切换那次渲染提交 UI 后才释放旧目标，下一次渲染才为 Trail3D 重建目标；等它就绪，不数帧。
-		if waiting(s, s.selected_effect >= 0 && s.effects[s.selected_effect].ready, "switched effect targets recreated") do return
-		check(s, s.effects[s.selected_effect].desc.name == "Trail3D" && s.effects[s.selected_effect].ready &&
-			s.effects[s.selected_effect].frame == 0 && !s.effects[s.selected_effect].expanded[2] &&
+		if waiting(s, s.selected_shader >= 0 && s.shaders[s.selected_shader].ready, "switched shader targets recreated") do return
+		check(s, s.shaders[s.selected_shader].desc.name == "Trail3D" && s.shaders[s.selected_shader].ready &&
+			s.shaders[s.selected_shader].frame == 0 && !s.shaders[s.selected_shader].expanded[2] &&
 			s.parameters[lab.bank_index(s.bank, "Trail3D_blur_x")].values[2].number[0] == 7, "switch back recreates history while retaining parameters and folding")
 		if s.failed {
-			fmt.printf("effect=%s ready=%v frame=%d expanded=%v radius=%v\n",
-				s.effects[s.selected_effect].desc.name, s.effects[s.selected_effect].ready,
-				s.effects[s.selected_effect].frame, s.effects[s.selected_effect].expanded[2], s.parameters[lab.bank_index(s.bank, "Trail3D_blur_x")].values[2].number[0])
+			fmt.printf("shader=%s ready=%v frame=%d expanded=%v radius=%v\n",
+				s.shaders[s.selected_shader].desc.name, s.shaders[s.selected_shader].ready,
+				s.shaders[s.selected_shader].frame, s.shaders[s.selected_shader].expanded[2], s.parameters[lab.bank_index(s.bank, "Trail3D_blur_x")].values[2].number[0])
 		}
 		s.graph_bank = s.bank
 		renamed := fixture_replace(s, s.graph_source, "二维拖尾", "拖尾二维")
 		check(s, os.write_entire_file(fmt.tprintf("%s/Trail2D.oshader", s.source_root), renamed) == nil,
-			"reload effect declarations with an active selection")
+			"reload shader declarations with an active selection")
 	case 6:
 		if rawptr(s.bank) == s.graph_bank do return
-		check(s, s.effects[s.selected_effect].desc.name == "Trail3D" && s.effects[s.selected_effect].ready,
-			"candidate bank commits only the selected effect targets")
+		check(s, s.shaders[s.selected_shader].desc.name == "Trail3D" && s.shaders[s.selected_shader].ready,
+			"candidate bank commits only the selected shader targets")
 		targets_declarations(s, false)
 	case 7:
 		if rawptr(s.bank) == s.graph_bank do return
-		check(s, len(s.effects) == 0 && s.workspace_empty && s.selected_effect == -1,
-			"removing effects leaves an empty workspace")
-		check(s, s.shader_count == 0, "removed files release shader resources")
+		check(s, len(s.shaders) == 0 && s.workspace_empty && s.selected_shader == -1,
+			"removing shaders leaves an empty workspace")
+		check(s, s.program_count == 0, "removed files release shader resources")
 		pixels := foster.TextureDownloadData(foster.TargetAttachment(&s.output))
 		defer delete(pixels)
 		pixel := (int(s.viewport.Y+s.viewport.Height/2)*s.output.Width+int(s.viewport.X+s.viewport.Width/2))*4
@@ -112,13 +112,13 @@ validate_targets :: proc(s: ^State, app: ^foster.App) {
 		targets_declarations(s, true)
 	case 8:
 		if rawptr(s.bank) == s.graph_bank do return
-		check(s, len(s.effects) == 4 && !s.workspace_empty && scene_texture(s).Resource != nil,
-			"restoring effects resumes Pass rendering")
-		for shader, i in s.shaders[:s.shader_count] {
-			check(s, shader.status == (s.bank.shader_used[i] ? .Live : .Ready),
-				"only selected effect Shaders require GPU pipeline validation")
+		check(s, len(s.shaders) == 4 && !s.workspace_empty && scene_texture(s).Resource != nil,
+			"restoring shaders resumes Pass rendering")
+		for program, i in s.programs[:s.program_count] {
+			check(s, program.status == (s.bank.program_used[i] ? .Live : .Ready),
+				"only selected shader Shaders require GPU pipeline validation")
 		}
-		select_parameter_effect(s, 0)
+		select_parameter_shader(s, 0)
 		feature_image(s, foster.Red)
 		for field, i in s.parameters[0].live.fields {
 			if field.kind == .Texture do s.feature_texture = i

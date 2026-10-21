@@ -28,7 +28,7 @@ feature_record :: proc(data: rawptr, frame: lab.Preview_Frame, material: ^mat.Ma
 }
 
 validate_features :: proc(s: ^State, app: ^foster.App) {
-	if waiting(s, preview_ready(s), "bank committed and selected effect drawn") do return
+	if waiting(s, preview_ready(s), "bank committed and selected shader drawn") do return
 	preset := fmt.tprintf("%s/feature-preset.json", s.temp_root)
 	image_path := fmt.tprintf("%s/feature.png", s.temp_root)
 	p := &s.parameters[0]
@@ -62,26 +62,26 @@ validate_features :: proc(s: ^State, app: ^foster.App) {
 		check(s, lab.reset_defaults(s.tool, 0, 0), "reset one field")
 		check(s, p.textures[0].Resource != nil, "single-field reset retains other fields")
 		feature_image(s, foster.Blue)
-		select_parameter_effect(s, 1)
+		select_parameter_shader(s, 1)
 		s.mode = 2
-		s.parameter_revision = s.shaders[1].revision
+		s.parameter_revision = s.programs[1].revision
 		s.parameter_watch.has_attempted = false
 		s.smoke_step = 1
 		s.elapsed = 0
 		return
 	}
 	if s.smoke_step == 1 {
-		if waiting(s, s.shaders[1].revision > s.parameter_revision, "Preview3D recompiled after retry") do return
+		if waiting(s, s.programs[1].revision > s.parameter_revision, "Preview3D recompiled after retry") do return
 		// 改写的图片由轮询或候选包提交重新载入；等 GPU 上确实是新内容，不按经过的时间推测。
 		pixels := foster.TextureDownloadData(&p.textures[0])
 		defer delete(pixels)
 		if waiting(s, len(pixels) >= 4 && pixels[0] == 0 && pixels[2] == 255, "texture file refresh reaches GPU") do return
 		// 接着检查录制式自定义预览：先记下材质效果 SpriteShadow 的内置预览，再让宿主记录自己的几何。
-		for e, i in s.effects {
-			if e.desc.name == "SpriteShadow" do lab.select_effect(s.tool, i)
+		for e, i in s.shaders {
+			if e.desc.name == "SpriteShadow" do lab.select_shader(s.tool, i)
 		}
-		check(s, s.selected_effect >= 0 && s.effects[s.selected_effect].desc.name == "SpriteShadow",
-			"SpriteShadow material effect selected")
+		check(s, s.selected_shader >= 0 && s.shaders[s.selected_shader].desc.name == "SpriteShadow",
+			"SpriteShadow material shader selected")
 		s.smoke_step = 5
 		return
 	}
@@ -99,15 +99,15 @@ validate_features :: proc(s: ^State, app: ^foster.App) {
 		capture(s, "features-host")
 		s.custom_preview = false
 		// instanced 模型：管线探测与 Render3D 一样带实例缓冲，预览由 Render3D 自动实例化。
-		for e, i in s.effects {
-			if e.desc.name == "Swarm" do lab.select_effect(s.tool, i)
+		for e, i in s.shaders {
+			if e.desc.name == "Swarm" do lab.select_shader(s.tool, i)
 		}
-		check(s, s.selected_effect >= 0 && s.effects[s.selected_effect].desc.name == "Swarm", "Swarm instanced effect selected")
+		check(s, s.selected_shader >= 0 && s.shaders[s.selected_shader].desc.name == "Swarm", "Swarm instanced shader selected")
 		s.smoke_step = 7
 		return
 	}
 	if s.smoke_step == 7 {
-		ready := preview_ready(s) && s.effects[s.selected_effect].ready && s.bank_error == ""
+		ready := preview_ready(s) && s.shaders[s.selected_shader].ready && s.bank_error == ""
 		if waiting(s, ready, "Swarm instanced model preview drawn") do return
 		capture(s, "features-swarm")
 		s.feature_template = 0
@@ -124,14 +124,14 @@ validate_features :: proc(s: ^State, app: ^foster.App) {
 			s.feature_template_written = s.feature_template + 1
 			return
 		}
-		e := s.selected_effect
-		ready := e >= 0 && s.effects[e].desc.name == base && s.effects[e].ready && preview_ready(s) && s.bank_error == ""
+		e := s.selected_shader
+		ready := e >= 0 && s.shaders[e].desc.name == base && s.shaders[e].ready && preview_ready(s) && s.bank_error == ""
 		if waiting(s, ready, fmt.tprintf("new %v shader compiled and selected", template)) do return
 		s.feature_template += 1
 		if s.feature_template < len(lab.Shader_Template) do return
 		capture(s, "features-new-shader")
 		// 打开效果菜单看新建按钮（下一帧的输出里才有菜单）。
-		s.effect_menu = true
+		s.shader_menu = true
 		s.smoke_step = 9
 		return
 	}
@@ -140,11 +140,11 @@ validate_features :: proc(s: ^State, app: ^foster.App) {
 		return
 	}
 	if s.smoke_step == 11 {
-		capture(s, "features-effect-menu")
-		s.effect_menu = false
+		capture(s, "features-shader-menu")
+		s.shader_menu = false
 		// 新建的模板排在两个预览之前，参数组下标变了：按名字回到 Preview3D 再检查分隔条与紧凑布局。
-		for e, i in s.effects {
-			if e.desc.name == "Preview3D" do lab.select_effect(s.tool, i)
+		for e, i in s.shaders {
+			if e.desc.name == "Preview3D" do lab.select_shader(s.tool, i)
 		}
 		press_widget(s, app, "sidebar-splitter", 0.5)
 		s.smoke_step = 2
