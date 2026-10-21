@@ -8,6 +8,7 @@ import "core:strings"
 import foster "olib:foster"
 import lab "olib:kit/tools/shader_lab"
 import clay "olib:thirdparty/clay-odin"
+import SDL "vendor:sdl3"
 
 prepare_smoke :: proc(s: ^State) -> bool {
 	root, err := os.make_directory_temp("", "olib_shader_lab_*", context.allocator)
@@ -40,7 +41,28 @@ check :: proc(s: ^State, condition: bool, message: string) {
 	if !condition {
 		s.failed = true
 		fmt.eprintln("FAIL:", message)
+		report_failure(s, message)
 	}
+}
+
+// 检出可能是 CRLF（core.autocrlf）；夹具按源码自身的换行改写。
+fixture_newline :: proc(text: string) -> string {
+	return strings.contains(text, "\r\n") ? "\r\n" : "\n"
+}
+
+// 锚点缺失立即失败，不拖到等待超时。
+fixture_replace :: proc(s: ^State, text, anchor, replacement: string) -> string {
+	newline := fixture_newline(text)
+	from, _ := strings.replace_all(anchor, "\n", newline, context.temp_allocator)
+	to, _ := strings.replace_all(replacement, "\n", newline, context.temp_allocator)
+	check(s, strings.contains(text, from), fmt.tprintf("fixture contains %q", anchor))
+	result, _ := strings.replace_all(text, from, to, context.temp_allocator)
+	return result
+}
+
+// 候选包已提交，选中效果的目标与 Shader 已就绪并在最近一次渲染里画出。
+preview_ready :: proc(s: ^State) -> bool {
+	return s.shader_count >= 2 && s.pending_bank == nil && s.selected_effect >= 0 && s.effects[s.selected_effect].ready
 }
 
 scene_hash :: proc(s: ^State) -> u64 {
@@ -96,6 +118,8 @@ validate_frame :: proc(s: ^State, app: ^foster.App) {
 		foster.Exit(app)
 		return
 	}
+	// 注入的输入要等一次渲染真正消费后再推进，后面的检查才看得到 UI 的结果。
+	if waiting(s, !s.input_pending, "injected input reaches the UI") do return
 	if s.targets {
 		validate_targets(s, app)
 		return
@@ -118,11 +142,11 @@ validate_frame :: proc(s: ^State, app: ^foster.App) {
 	}
 	if s.material_step > 0 {
 		// shot 最后一步进行中：只等材质预览，不再走前面的模式截图。
-		if shot_material_sprite(s) do foster.Exit(app)
+		if shot_material_sprite(s) do finish(s, app)
 		return
 	}
 	if s.smoke_step == 0 {
-		if s.shader_count < 2 || s.pending_bank != nil || s.selected_effect < 0 || !s.effects[s.selected_effect].ready do return
+		if waiting(s, preview_ready(s), "bank committed and selected effect drawn") do return
 		// 每个模式连续两帧，确保录下的确实是切换后的实际绘制。
 		if s.capture_index%2 == 1 {
 			names := [4]string{"fullscreen", "sprite", "sphere", "cube"}
@@ -134,7 +158,7 @@ validate_frame :: proc(s: ^State, app: ^foster.App) {
 		s.capture_index += 1
 		if s.capture_index < 8 do return
 		if !s.smoke {
-			if shot_material_sprite(s) do foster.Exit(app)
+			if shot_material_sprite(s) do finish(s, app)
 			return
 		}
 		s.initial_pixels = scene_hash(s)
@@ -179,9 +203,8 @@ validate_frame :: proc(s: ^State, app: ^foster.App) {
 		path := fmt.tprintf("%s/Preview2D.oshader", s.temp_root)
 		bytes, _ := os.read_entire_file(path, context.temp_allocator)
 		s.binding_source = strings.clone(string(bytes))
-		modified, _ := strings.replace_all(string(bytes), "color *= lerp",
-			"color *= Extra; color *= lerp", context.temp_allocator)
-		text, _ := strings.replace_all(modified, "HLSLPROGRAM", "HLSLPROGRAM\ncbuffer ExtraBlock : register(b2, space3) { float Extra; };", context.temp_allocator)
+		modified := fixture_replace(s, string(bytes), "color *= lerp", "color *= Extra; color *= lerp")
+		text := fixture_replace(s, modified, "HLSLPROGRAM", "HLSLPROGRAM\ncbuffer ExtraBlock : register(b2, space3) { float Extra; };")
 		check(s, os.write_entire_file(path, transmute([]u8)text) == nil, "change binding contract")
 		s.smoke_step = 3
 	} else if s.smoke_step == 3 {
@@ -200,15 +223,16 @@ validate_frame :: proc(s: ^State, app: ^foster.App) {
 		case 0:
 			press_widget(s, app, "effect:Preview2D", 0.5)
 		case 2, 6:
-			foster.InputMouseButton(&app.Input, .Left, false, app.Time.Elapsed)
+			release_pointer(s, app)
 		case 4:
 			check(s, s.mode == 0, "Shader selection uses real UI input")
 			press_widget(s, app, "Preview2D_main:strength", 0.9)
 		case 8:
 			check(s, lab.parameter_number(s.tool, 0, "strength") > 0.8 && lab.parameter_number(s.tool, 1, "strength") == 0.65 && s.yaw == 0.4,
 				"slider changes only active preview and does not orbit camera")
-			foster.SetWindowSize(&app.Window, {1100, 825})
+			resize_window(s, app, {1100, 825})
 		case 12:
+			if waiting(s, resized(s, app), "window resize applied") do return
 			check(s, s.output.Width == 1100 && s.output.Height == 825, "resize uses native output pixels")
 			capture(s, "resized")
 			select_parameter_effect(s, 1)
@@ -219,16 +243,15 @@ validate_frame :: proc(s: ^State, app: ^foster.App) {
 		s.capture_index += 1
 	} else if s.smoke_step == 5 {
 		if s.pending_bank != nil do return
-		if s.capture_index < 2 {
-			s.capture_index += 1
-			return
-		}
+		// 切到 Preview3D 后下一次渲染才按新尺寸分配目标并画出；ready 即表示那次渲染已画出。
+		drawn := s.selected_effect >= 0 && s.effects[s.selected_effect].desc.name == "Preview3D" && s.effects[s.selected_effect].ready
+		if waiting(s, drawn, "Preview3D drawn at the resized output") do return
 		s.initial_pixels = scene_hash(s)
 		s.parameter_revision = s.shaders[1].revision
 		path := fmt.tprintf("%s/Preview3D.oshader", s.source_root)
 		bytes, _ := os.read_entire_file(path, context.temp_allocator)
 		s.parameter_source = strings.clone(string(bytes))
-		bad, _ := strings.replace_all(s.parameter_source, "Range(0,5)", "Range(0,invalid)", context.temp_allocator)
+		bad := fixture_replace(s, s.parameter_source, "Range(0,5)", "Range(0,invalid)")
 		check(s, os.write_entire_file(path, bad) == nil, "write bad property declaration")
 		s.smoke_step = 6
 	} else if s.smoke_step == 6 {
@@ -236,11 +259,16 @@ validate_frame :: proc(s: ^State, app: ^foster.App) {
 		check(s, s.shaders[1].revision == s.parameter_revision && scene_hash(s) == s.initial_pixels,
 			"invalid property declaration keeps both schema and GPU pixels")
 		capture(s, "parameter-error")
-		text, _ := strings.replace_all(s.parameter_source, "Properties\n    {", "Properties\n    {\n        _gain (\"亮度\", Range(0,1)) = 0.5", context.temp_allocator)
-		text, _ = strings.replace_all(text, "return float4(color * light", "return float4(color * _gain * light", context.temp_allocator)
+		text := fixture_replace(s, s.parameter_source, "Properties\n    {", "Properties\n    {\n        _gain (\"亮度\", Range(0,1)) = 0.5")
+		text = fixture_replace(s, text, "return float4(color * light", "return float4(color * _gain * light")
 		check(s, os.write_entire_file(fmt.tprintf("%s/Preview3D.oshader", s.source_root), text) == nil, "add property and consume it in HLSL atomically")
 		s.smoke_step = 7
 	} else if s.smoke_step == 7 {
+		// 这次写入之后只有新声明的候选包；它编译失败就不会再出现 gain，直接报告而不是等到超时。
+		if s.pending_bank != nil && s.pending_bank.candidate_failed {
+			check(s, false, fmt.tprintf("candidate with the new property compiles: %s", s.bank_error))
+			return
+		}
 		if s.parameters[1].has_pending || lab.parameter_number(s.tool, 1, "gain") != 0.5 do return
 		check(s, s.shaders[1].revision > s.parameter_revision && scene_hash(s) != s.initial_pixels,
 			"new generated layout and default visibly update 3D")
@@ -300,11 +328,17 @@ ENDHLSL
 	} else if s.smoke_step == 10 {
 		if lab.bank_index(s.bank, "Extra_main") >= 0 do return
 		capture(s, "parameter-texture")
-		if !s.failed do fmt.println("PASS: 2D/3D reload, oshader parsing rollback/recovery, layout migration, textures, discovery, UI, resize")
 		delete(s.parameter_source)
 		s.parameter_source = ""
-		foster.Exit(app)
+		finish(s, app, "PASS: 2D/3D reload, oshader parsing rollback/recovery, layout migration, textures, discovery, UI, resize")
 	}
+}
+
+// 走完最后一步才算完成；没走到这里就退出（例如窗口被关掉）由 dispose 判为失败，不当作通过。
+finish :: proc(s: ^State, app: ^foster.App, pass := "") {
+	if !s.failed && pass != "" do fmt.println(pass)
+	s.done = true
+	foster.Exit(app)
 }
 
 press_widget :: proc(s: ^State, app: ^foster.App, id: string, fraction: f32) {
@@ -315,8 +349,96 @@ press_widget :: proc(s: ^State, app: ^foster.App, id: string, fraction: f32) {
 	pixels := foster.SizeInPixels(&app.Window)
 	position := foster.Vec2f{(s.region.X + (box.x + box.width*fraction)*s.ui_scale)*f32(size.X)/f32(pixels.X),
 		(s.region.Y + (box.y + box.height*0.5)*s.ui_scale)*f32(size.Y)/f32(pixels.Y)}
+	inject_move(s, app, position)
+	inject_button(s, app, true)
+	log_event(s, "press %s", id)
+}
+
+release_pointer :: proc(s: ^State, app: ^foster.App) {
+	inject_button(s, app, false)
+}
+
+// 验证只认注入的输入：真实鼠标键盘一直屏蔽，否则窗口弹出抢到焦点后桌面上的操作会混进自动点击。
+// 指针先移到界面外，截图不随启动时的光标位置出现悬停高亮。
+isolate_input :: proc(s: ^State, app: ^foster.App) {
+	inject_move(s, app, {-1, -1})
+	inject_button(s, app, false)
+}
+
+inject_move :: proc(s: ^State, app: ^foster.App, position: foster.Vec2f) {
+	app.Input.Enabled = foster.InputEnabledAll
 	foster.InputMouseMove(&app.Input, position, {}, app.Time.Elapsed)
-	foster.InputMouseButton(&app.Input, .Left, true, app.Time.Elapsed)
+	input_sent(s, app, fmt.tprintf("pointer %.1f,%.1f", position.X, position.Y))
+}
+
+inject_button :: proc(s: ^State, app: ^foster.App, down: bool) {
+	app.Input.Enabled = foster.InputEnabledAll
+	foster.InputMouseButton(&app.Input, .Left, down, app.Time.Elapsed)
+	input_sent(s, app, down ? "left down" : "left up")
+}
+
+inject_key :: proc(s: ^State, app: ^foster.App, key: foster.Keys, down: bool) {
+	app.Input.Enabled = foster.InputEnabledAll
+	foster.InputKey(&app.Input, key, down, app.Time.Elapsed)
+	input_sent(s, app, fmt.tprintf("key %v %s", key, down ? "down" : "up"))
+	s.input_key_edge = down
+	s.input_key = key
+}
+
+// 注入后继续屏蔽真实设备，并记下注入所在的 Update，input_track 据此判断何时被渲染消费。
+@(private="file")
+input_sent :: proc(s: ^State, app: ^foster.App, what: string) {
+	app.Input.Enabled = foster.InputEnabledNone
+	s.input_pending = true
+	s.input_update = s.update_count
+	s.input_applied = -1
+	s.input_key_edge = false
+	log_event(s, "inject %s", what)
+}
+
+// 每次 Update 开头调用。注入在下一次 Update 的 InputStep 进入 State，之后的渲染把它交给 UI；
+// 一次渲染前可能跑多次 Update，所以不能按帧数推测。鼠标是电平，晚一帧也不会丢；
+// 按键按下是边沿，只在进入 State 的那次 Update 内有效，渲染前又跑了一次 Update 就丢了，需要重发。
+input_track :: proc(s: ^State, app: ^foster.App) {
+	if !s.input_pending || s.update_count <= s.input_update do return
+	if s.input_applied < 0 {
+		s.input_applied = s.render_serial
+	} else if s.render_serial > s.input_applied {
+		s.input_pending = false
+		log_event(s, "injected input consumed")
+	} else if s.input_key_edge {
+		inject_key(s, app, s.input_key, true)
+	}
+}
+
+// 新尺寸在下一次渲染才用于输出、布局和 Pass 目标。
+resize_window :: proc(s: ^State, app: ^foster.App, size: foster.Point2) {
+	s.resize_to = size
+	window_restore(s, app)
+	foster.SetWindowSize(&app.Window, size)
+	s.resize_serial = foster.Size(&app.Window) == size ? s.render_serial : -1
+	log_event(s, "request window %dx%d", size.X, size.Y)
+}
+
+// 窗口达到请求尺寸后再经过一次渲染才算生效。
+resized :: proc(s: ^State, app: ^foster.App) -> bool {
+	if foster.Size(&app.Window) != s.resize_to {
+		s.resize_serial = -1
+		if window_restore(s, app) do foster.SetWindowSize(&app.Window, s.resize_to)
+		return false
+	}
+	if s.resize_serial < 0 do s.resize_serial = s.render_serial
+	return s.render_serial > s.resize_serial
+}
+
+// SDL 只在窗口处于普通状态时应用尺寸；检查运行时有人在用这台机器，弹出的窗口可能被最小化或最大化。
+@(private="file")
+window_restore :: proc(s: ^State, app: ^foster.App) -> bool {
+	flags := SDL.GetWindowFlags(app.Window.Handle) & SDL.WindowFlags{.MINIMIZED, .MAXIMIZED}
+	if flags == {} do return false
+	_ = SDL.RestoreWindow(app.Window.Handle)
+	log_event(s, "restore window from %v to apply the requested size", flags)
+	return true
 }
 
 // Clay 元素哈希表保留历史布局；控件是否仍存在应看刚完成这一帧的交互列表。
@@ -339,20 +461,15 @@ shot_material_sprite :: proc(s: ^State) -> bool {
 		check(s, index >= 0, "SpriteShadow effect exists")
 		if index < 0 do return true
 		lab.select_effect(s.tool, index)
+		s.material_step = 1
 	}
-	s.material_step += 1
-	settled := true
 	for p, i in s.parameters[:s.shader_count] {
 		if !strings.has_prefix(p.name, "SpriteShadow_") do continue
-		status := s.shaders[i].status
-		settled = settled && (status == .Live || status == .Error)
-		check(s, status != .Error, fmt.tprintf("%s compiles: %s", p.name, s.shaders[i].diagnostic))
+		check(s, s.shaders[i].status != .Error, fmt.tprintf("%s compiles: %s", p.name, s.shaders[i].diagnostic))
 	}
-	if !settled && s.material_step < 600 do return false
-	check(s, settled, "SpriteShadow shaders become live")
-	// 生效后的下一帧才画进预览目标，多等几帧再读回。
-	s.material_live_frames += 1
-	if settled && s.material_live_frames < 4 do return false
+	if s.failed do return true
+	// 选中后的下一次渲染才分配目标、提交两个 Shader；ready 表示所用 Shader 已生效且那次渲染画出了预览。
+	if waiting(s, s.effects[s.selected_effect].ready, "SpriteShadow material preview drawn") do return false
 	check(s, s.bank_error == "", fmt.tprintf("material preview binds: %s", s.bank_error))
 	capture(s, "material-sprite")
 	return true

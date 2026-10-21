@@ -3,7 +3,6 @@ package shader_lab_checks
 // 定向检查 Pass 目标生命周期与 Texture Clear，不运行完整故障注入。
 import "core:fmt"
 import "core:os"
-import "core:strings"
 import foster "olib:foster"
 import lab "olib:kit/tools/shader_lab"
 import clay "olib:thirdparty/clay-odin"
@@ -55,8 +54,11 @@ validate_targets :: proc(s: ^State, app: ^foster.App) {
 		for effect, i in s.effects {
 			if effect.desc.name == "Trail3D" do lab.select_effect(s.tool, i)
 		}
-		foster.SetWindowSize(&app.Window, {960, 720})
+		resize_window(s, app, {960, 720})
 	case 2:
+		if waiting(s, resized(s, app), "window resize applied") do return
+		// 单步要在已就绪的效果上推进，否则那次渲染只会丢弃单步请求。
+		if waiting(s, s.effects[s.selected_effect].ready, "Trail3D drawn at the resized output") do return
 		e := &s.effects[s.selected_effect]
 		check(s, len(e.targets) == 4 && e.targets[0].history &&
 			e.targets[0].buffers[0].Width == int(s.viewport.Width) &&
@@ -73,13 +75,12 @@ validate_targets :: proc(s: ^State, app: ^foster.App) {
 		press_widget(s, app, "workspace:3d", 0.5)
 	case 5:
 		if s.capture_index == 0 {
-			foster.InputMouseButton(&app.Input, .Left, false, app.Time.Elapsed)
+			release_pointer(s, app)
 			s.capture_index = 1
-			s.target_release_serial = int(s.render_serial)
-			return // 按钮在 release 帧的 panel 中切换，下一轮再读取渲染结果。
+			return // 按钮在消费松开的那次渲染的 panel 中切换，下一轮再读取结果。
 		}
-		// 切换帧提交 UI 后释放旧目标，下一渲染帧才创建新目标；不要以墙钟时间推测帧数。
-		if int(s.render_serial) < s.target_release_serial+2 do return
+		// 切换那次渲染提交 UI 后才释放旧目标，下一次渲染才为 Trail3D 重建目标；等它就绪，不数帧。
+		if waiting(s, s.selected_effect >= 0 && s.effects[s.selected_effect].ready, "switched effect targets recreated") do return
 		check(s, s.effects[s.selected_effect].desc.name == "Trail3D" && s.effects[s.selected_effect].ready &&
 			s.effects[s.selected_effect].frame == 0 && !s.effects[s.selected_effect].expanded[2] &&
 			s.parameters[lab.bank_index(s.bank, "Trail3D_blur_x")].values[2].number[0] == 7, "switch back recreates history while retaining parameters and folding")
@@ -89,7 +90,7 @@ validate_targets :: proc(s: ^State, app: ^foster.App) {
 				s.effects[s.selected_effect].frame, s.effects[s.selected_effect].expanded[2], s.parameters[lab.bank_index(s.bank, "Trail3D_blur_x")].values[2].number[0])
 		}
 		s.graph_bank = s.bank
-		renamed, _ := strings.replace_all(s.graph_source, "二维拖尾", "拖尾二维", context.temp_allocator)
+		renamed := fixture_replace(s, s.graph_source, "二维拖尾", "拖尾二维")
 		check(s, os.write_entire_file(fmt.tprintf("%s/Trail2D.oshader", s.source_root), renamed) == nil,
 			"reload effect declarations with an active selection")
 	case 6:
@@ -130,7 +131,7 @@ validate_targets :: proc(s: ^State, app: ^foster.App) {
 	case 10:
 		press_widget(s, app, "texture:Preview2D_main:image", 0.5)
 	case 11, 14:
-		foster.InputMouseButton(&app.Input, .Left, false, app.Time.Elapsed)
+		release_pointer(s, app)
 	case 13:
 		check(s, s.parameters[0].texture_picker == "image", "texture card opens image actions")
 		press_widget(s, app, "texture-default", 0.5)
@@ -138,8 +139,7 @@ validate_targets :: proc(s: ^State, app: ^foster.App) {
 		check(s, s.parameters[0].values[s.feature_texture].texture == "" && s.parameters[0].textures[0].Resource == nil &&
 			len(s.retired_textures) == 0 && s.ctx.error_count == 0, "Clear safely restores checker and releases retired texture after UI submission")
 		capture(s, "texture-cleared")
-		if !s.failed do fmt.println("PASS: selected-only targets, switch/recreate, history reset, hot reload, empty workspace and real Texture Clear")
-		foster.Exit(app)
+		finish(s, app, "PASS: selected-only targets, switch/recreate, history reset, hot reload, empty workspace and real Texture Clear")
 	}
 	s.smoke_step += 1
 }

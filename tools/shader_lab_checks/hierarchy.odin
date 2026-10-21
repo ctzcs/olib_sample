@@ -43,7 +43,7 @@ validate_hierarchy :: proc(s: ^State, app: ^foster.App) {
 		capture(s, "hierarchy-2d")
 		press_widget(s, app, "shader-folder:Trail2D:blur_x", 0.5)
 	case 2, 4, 6, 8:
-		foster.InputMouseButton(&app.Input, .Left, false, app.Time.Elapsed)
+		release_pointer(s, app)
 	case 3:
 		if s.preview_pass != -1 || s.inspect_pass != 2 || !p.folder_closed {
 			fmt.printf("Folder click state: preview=%d inspect=%d closed=%v pointer=%v\n",
@@ -66,7 +66,7 @@ validate_hierarchy :: proc(s: ^State, app: ^foster.App) {
 		lab.set_pass_enabled(s.tool, graph_index, 2, false)
 		p.values[2].number[0] = 4.5
 		s.graph_bank = s.bank
-		renamed, _ := strings.replace_all(s.graph_source, "二维拖尾", "拖尾二维", context.temp_allocator)
+		renamed := fixture_replace(s, s.graph_source, "二维拖尾", "拖尾二维")
 		check(s, os.write_entire_file(fmt.tprintf("%s/Trail2D.oshader", s.source_root), transmute([]u8)renamed) == nil,
 			"rename effect label fixture")
 	case 10:
@@ -93,7 +93,7 @@ validate_hierarchy :: proc(s: ^State, app: ^foster.App) {
 		capture(s, "hierarchy-3d")
 		press_widget(s, app, "effect-menu", 0.5)
 	case 13, 15, 17, 20, 22, 26:
-		foster.InputMouseButton(&app.Input, .Left, false, app.Time.Elapsed)
+		release_pointer(s, app)
 	case 14:
 		check(s, widget_present(s, "effect:Trail3D") &&
 			!widget_present(s, "effect:Trail2D"), "effect menu isolates 3D workspace")
@@ -118,11 +118,12 @@ validate_hierarchy :: proc(s: ^State, app: ^foster.App) {
 		capture(s, "unified-effect")
 	case 18:
 		check(s, s.ctx.error_count == 0 && !s.ctx.pool_overflow, "unified effect layout has no errors")
-		foster.SetWindowSize(&app.Window, {1696, 1080})
+		resize_window(s, app, {1696, 1080})
 		lab.select_effect(s.tool, graph_3d_index, 2)
 		s.paused = false
 		s.feature_next = s.elapsed+0.6
 	case 19:
+		if waiting(s, resized(s, app), "window resize applied") do return
 		check(s, s.ui_scale > 1.2 && s.ctx.scale == s.ui_scale, "large window scales MSDF and all UI geometry together")
 		capture(s, "workflow-large")
 		press_widget(s, app, "pass-preview", 0.5)
@@ -131,8 +132,9 @@ validate_hierarchy :: proc(s: ^State, app: ^foster.App) {
 		press_widget(s, app, "effect-final", 0.5)
 	case 23:
 		check(s, s.preview_pass == -1 && s.inspect_pass == 2, "return to final keeps inspected parameters")
-		foster.SetWindowSize(&app.Window, {640, 800})
+		resize_window(s, app, {640, 800})
 	case 24:
+		if waiting(s, resized(s, app), "window resize applied") do return
 		check(s, s.compact && s.ui_scale == 1, "narrow window keeps readable font size")
 		capture(s, "workflow-narrow")
 	case 25:
@@ -144,7 +146,7 @@ validate_hierarchy :: proc(s: ^State, app: ^foster.App) {
 		}
 		check(s, s.sidebar_collapsed && s.ctx.error_count == 0 && !s.ctx.pool_overflow,
 			"narrow panel can yield full preview without layout errors")
-		foster.SetWindowSize(&app.Window, {1280, 800})
+		resize_window(s, app, {1280, 800})
 		s.sidebar_collapsed = false
 		lab.select_effect(s.tool, graph_3d_index, 1)
 		s.mode = 3
@@ -152,6 +154,8 @@ validate_hierarchy :: proc(s: ^State, app: ^foster.App) {
 		s.paused = true
 		s.feature_next = s.elapsed+0.3
 	case 28:
+		// 侧栏锚点要在恢复尺寸后的布局上测量，之后的检查才和它比较。
+		if waiting(s, resized(s, app), "window resize applied") do return
 		s.fixed_pass_y = clay.GetElementData(clay.ID("pass:blur_x")).boundingBox.y
 		s.fixed_tabs_y = clay.GetElementData(clay.ID("inspector-parameters")).boundingBox.y
 		data := clay.GetScrollContainerData(clay.ID(lab.inspector_scroll_id(s.tool)))
@@ -163,7 +167,7 @@ validate_hierarchy :: proc(s: ^State, app: ^foster.App) {
 		check(s, s.saved_scroll_y < -30, "parameter scroll is applied")
 		press_widget(s, app, "workspace:2d", 0.5)
 	case 30, 35, 38, 41:
-		foster.InputMouseButton(&app.Input, .Left, false, app.Time.Elapsed)
+		release_pointer(s, app)
 	case 31:
 		check(s, s.workspace == 0 && s.selected_effect == graph_index && s.inspect_pass == 2 && s.mode == 0,
 			"2D workspace restores its own selected effect and Pass")
@@ -172,7 +176,7 @@ validate_hierarchy :: proc(s: ^State, app: ^foster.App) {
 			"workspace and parameter length changes leave sidebar anchors fixed")
 		press_widget(s, app, "effect-menu", 0.5)
 	case 32:
-		foster.InputMouseButton(&app.Input, .Left, false, app.Time.Elapsed)
+		release_pointer(s, app)
 	case 33:
 		check(s, clay.GetElementData(clay.ID("pass:blur_x")).boundingBox.y == s.fixed_pass_y,
 			"effect popup does not displace the Pass list")
@@ -204,12 +208,17 @@ validate_hierarchy :: proc(s: ^State, app: ^foster.App) {
 		path := fmt.tprintf("%s/Preview3D.oshader", s.source_root)
 		bytes, err := os.read_entire_file(path, context.temp_allocator)
 		check(s, err == nil, "read single Pass declaration")
-		text := string(bytes)
-		start := strings.index(text, "    Pass \"main\"")
+		// 去掉文件末尾 Shader 块的右括号，复制 main Pass 后再补回。
+		body := strings.trim_right_space(string(bytes))
+		check(s, strings.has_suffix(body, "}"), "Shader block closes the file")
+		body = strings.trim_suffix(body, "}")
+		start := strings.index(body, "    Pass \"main\"")
 		check(s, start >= 0, "find main Pass")
-		second, _ := strings.replace_all(strings.trim_space(text[start:len(text)-2]), "Pass \"main\"", "Pass \"second\"", context.temp_allocator)
-		first, _ := strings.replace_all(text[:len(text)-2], "Draw Preview_Model", "Draw Preview_Model\n        Output \"base\"", context.temp_allocator)
-		expanded := fmt.tprintf("%s\n%s\n}\n", first, second)
+		if s.failed do return
+		newline := fixture_newline(body)
+		second, _ := strings.replace_all(strings.trim_space(body[start:]), "Pass \"main\"", "Pass \"second\"", context.temp_allocator)
+		first := fixture_replace(s, body, "Draw Preview_Model", "Draw Preview_Model\n        Output \"base\"")
+		expanded := fmt.tprintf("%s%s%s%s}%s", first, newline, second, newline, newline)
 		check(s, os.write_entire_file(path, expanded) == nil, "extend explicit effect with another Pass")
 	case 44:
 		if rawptr(s.bank) == s.graph_bank do return
@@ -219,8 +228,7 @@ validate_hierarchy :: proc(s: ^State, app: ^foster.App) {
 			len(s.effects) == 4 && s.shader_count == 11 && lab.parameter_number(s.tool, 1, "hue") == 0.15,
 			"single to multi-Pass edit retains effect identity, selection and values")
 		check(s, widget_present(s, "pass-preview"), "multiple Passes expose intermediate preview")
-		if !s.failed do fmt.println("PASS: explicit effects only, Pass programs excluded, single/multi-Pass rendering, workspace/scroll restoration and scaled MSDF input")
-		foster.Exit(app)
+		finish(s, app, "PASS: explicit effects only, Pass programs excluded, single/multi-Pass rendering, workspace/scroll restoration and scaled MSDF input")
 	}
 	s.smoke_step += 1
 }

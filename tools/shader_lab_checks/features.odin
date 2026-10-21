@@ -31,7 +31,7 @@ feature_draw :: proc(data: rawptr, frame: lab.Preview_Frame, command: ^foster.Dr
 }
 
 validate_features :: proc(s: ^State, app: ^foster.App) {
-	if s.shader_count < 2 || s.pending_bank != nil || s.selected_effect < 0 || !s.effects[s.selected_effect].ready do return
+	if waiting(s, preview_ready(s), "bank committed and selected effect drawn") do return
 	preset := fmt.tprintf("%s/feature-preset.json", s.temp_root)
 	image_path := fmt.tprintf("%s/feature.png", s.temp_root)
 	p := &s.parameters[0]
@@ -76,10 +76,11 @@ validate_features :: proc(s: ^State, app: ^foster.App) {
 		return
 	}
 	if s.smoke_step == 1 {
-		if s.elapsed < 0.8 || s.shaders[1].revision <= s.parameter_revision do return
+		if waiting(s, s.shaders[1].revision > s.parameter_revision, "Preview3D recompiled after retry") do return
+		// 改写的图片由轮询或候选包提交重新载入；等 GPU 上确实是新内容，不按经过的时间推测。
 		pixels := foster.TextureDownloadData(&p.textures[0])
 		defer delete(pixels)
-		check(s, len(pixels) >= 4 && pixels[0] == 0 && pixels[2] == 255, "texture file refresh reaches GPU")
+		if waiting(s, len(pixels) >= 4 && pixels[0] == 0 && pixels[2] == 255, "texture file refresh reaches GPU") do return
 		check(s, s.feature_prepare > 0 && s.feature_draw > 0, "host prepare/probe and draw callbacks used")
 		capture(s, "features-host")
 		press_widget(s, app, "sidebar-splitter", 0.5)
@@ -95,27 +96,31 @@ validate_features :: proc(s: ^State, app: ^foster.App) {
 	case 2:
 		pixels := foster.SizeInPixels(&app.Window)
 		logical := foster.Size(&app.Window)
-		foster.InputMouseMove(&app.Input, {
+		inject_move(s, app, {
 			(s.region.X+380)*f32(logical.X)/f32(pixels.X),
-			(s.region.Y+160)*f32(logical.Y)/f32(pixels.Y)}, {}, app.Time.Elapsed)
+			(s.region.Y+160)*f32(logical.Y)/f32(pixels.Y)})
 	case 4:
-		foster.InputMouseButton(&app.Input, .Left, false, app.Time.Elapsed)
+		release_pointer(s, app)
 	case 6:
 		check(s, s.sidebar_width > 340 && scene_texture(s).Width == int(s.viewport.Width), "splitter updates viewport and Pass target")
 		press_widget(s, app, "toggle-sidebar", 0.5)
 	case 8:
-		foster.InputMouseButton(&app.Input, .Left, false, app.Time.Elapsed)
+		release_pointer(s, app)
 	case 12:
 		check(s, s.sidebar_collapsed && s.viewport.X == 8, "collapsed inspector expands preview")
-		foster.SetWindowSize(&app.Window, {540, 640})
+		resize_window(s, app, {540, 640})
 	case 16:
+		// 按钮位置取自最近一次布局，必须是新尺寸下的布局。
+		if waiting(s, resized(s, app), "window resize applied") {
+			s.capture_index -= 1
+			return
+		}
 		press_widget(s, app, "toggle-sidebar", 0.5)
 	case 18:
-		foster.InputMouseButton(&app.Input, .Left, false, app.Time.Elapsed)
+		release_pointer(s, app)
 	case 22:
 		check(s, s.compact && !s.sidebar_collapsed && s.viewport.X == 8, "small panel uses overlay inspector")
 		capture(s, "features-compact")
-		if !s.failed do fmt.println("PASS: presets/defaults/rollback, stale file request, texture reload, custom preview, splitter/collapse/compact")
-		foster.Exit(app)
+		finish(s, app, "PASS: presets/defaults/rollback, stale file request, texture reload, custom preview, splitter/collapse/compact")
 	}
 }

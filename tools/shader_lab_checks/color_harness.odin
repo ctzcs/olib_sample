@@ -1,8 +1,6 @@
 package shader_lab_checks
 
 // 调色板实际输入验收；复用隔离的 Shader Lab 源码和最终输出截图。
-import "core:fmt"
-
 import foster "olib:foster"
 import clay "olib:thirdparty/clay-odin"
 
@@ -21,12 +19,12 @@ color_test_move :: proc(s: ^State, app: ^foster.App, id: string, x, y: f32, down
 	pixels := foster.SizeInPixels(&app.Window)
 	point := foster.Vec2f{(s.region.X+box.boundingBox.x+box.boundingBox.width*x)*f32(logical.X)/f32(pixels.X),
 		(s.region.Y+box.boundingBox.y+box.boundingBox.height*y)*f32(logical.Y)/f32(pixels.Y)}
-	foster.InputMouseMove(&app.Input, point, {}, app.Time.Elapsed)
-	foster.InputMouseButton(&app.Input, .Left, down, app.Time.Elapsed)
+	inject_move(s, app, point)
+	inject_button(s, app, down)
 }
 
 validate_color_frame :: proc(s: ^State, app: ^foster.App) {
-	if s.shader_count < 2 || s.pending_bank != nil || s.selected_effect < 0 || !s.effects[s.selected_effect].ready do return
+	if waiting(s, preview_ready(s), "bank committed and selected effect drawn") do return
 	step := s.capture_index
 	switch step {
 	case 0:
@@ -37,7 +35,7 @@ validate_color_frame :: proc(s: ^State, app: ^foster.App) {
 		s.parameter_revision = s.shaders[1].revision
 		press_widget(s, app, "Preview3D_main:tint:color", 0.5)
 	case 4, 8, 12, 17, 22, 26, 30, 34, 40, 45, 49, 55, 59, 63, 69, 73, 81, 85:
-		foster.InputMouseButton(&app.Input, .Left, false, app.Time.Elapsed)
+		release_pointer(s, app)
 	case 6:
 		check(s, s.color_picker.open, "Tint swatch opens palette")
 		press_widget(s, app, "color-hue", 0.58)
@@ -103,17 +101,16 @@ validate_color_frame :: proc(s: ^State, app: ^foster.App) {
 	case 71, 83:
 		press_widget(s, app, "color-preset:3", 0.5)
 	case 75:
-		foster.InputKey(&app.Input, .Escape, true, app.Time.Elapsed)
+		inject_key(s, app, .Escape, true)
 	case 77:
-		foster.InputKey(&app.Input, .Escape, false, app.Time.Elapsed)
+		inject_key(s, app, .Escape, false)
 		check(s, !s.color_picker.open && color_test_value(s, 0)[2] == 1, "Escape cancels palette without quitting")
 	case 87:
 		s.color_test_blur = true
 	case 89:
 		check(s, !s.color_picker.open && color_test_value(s, 0)[2] == 1, "focus loss cancels and restores color")
 		s.color_test_blur = false
-		if !s.failed do fmt.println("PASS: palette hue/SV/alpha/presets, live 2D/3D, cancel/apply/Escape/blur, drag capture, isolated values")
-		foster.Exit(app)
+		finish(s, app, "PASS: palette hue/SV/alpha/presets, live 2D/3D, cancel/apply/Escape/blur, drag capture, isolated values")
 	}
 	s.capture_index += 1
 }

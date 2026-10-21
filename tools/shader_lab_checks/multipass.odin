@@ -83,16 +83,17 @@ validate_multipass :: proc(s: ^State, app: ^foster.App) {
 	case 6:
 		check(s, len(s.effects[graph_3d_index].targets[1].buffers[0].Attachments) == 2, "3D model pass has depth")
 		capture(s, "multipass-3d")
-		foster.SetWindowSize(&app.Window, {960, 720})
+		resize_window(s, app, {960, 720})
 	case 7:
+		if waiting(s, resized(s, app), "window resize applied") do return
 		check(s, s.effects[graph_3d_index].targets[0].buffers[0].Width == int(s.viewport.Width), "resize rebuilds feedback targets")
 		s.graph_bank = s.bank
-		bad, _ := strings.replace_all(s.graph_source, "Previous", "Current", context.temp_allocator)
+		bad := fixture_replace(s, s.graph_source, "Previous", "Current")
 		check(s, os.write_entire_file(path, transmute([]u8)bad) == nil, "write cycle fixture")
 	case 8:
 		if s.parameter_watch.status != .Error do return
 		check(s, rawptr(s.bank) == s.graph_bank && strings.contains(s.parameter_watch.diagnostic, "cycle"), "cycle rejected without replacing live effect")
-		bad, _ := strings.replace_all(s.graph_shader, "float3 current =", "invalid_hlsl_here float3 current =", context.temp_allocator)
+		bad := fixture_replace(s, s.graph_shader, "float3 current =", "invalid_hlsl_here float3 current =")
 		check(s, os.write_entire_file(shader, bad) == nil, "write invalid shader fixture")
 		check(s, os.write_entire_file(path, transmute([]u8)s.graph_source) == nil, "restore oshader graph")
 	case 9:
@@ -103,8 +104,7 @@ validate_multipass :: proc(s: ^State, app: ^foster.App) {
 		if rawptr(s.bank) == s.graph_bank || s.pending_bank != nil do return
 		check(s, s.bank_error == "" && s.selected_effect == graph_3d_index && len(s.effects) == 4, "recovered candidate commits atomically and keeps selection")
 		capture(s, "multipass-recovered")
-		if !s.failed do fmt.println("PASS: single Shader, oshader graph, HDR/MSAA/half-size, 2D/3D, feedback, pause/step/reset/resize, cycle and shader rollback/recovery")
-		foster.Exit(app)
+		finish(s, app, "PASS: single Shader, oshader graph, HDR/MSAA/half-size, 2D/3D, feedback, pause/step/reset/resize, cycle and shader rollback/recovery")
 	}
 	s.smoke_step += 1
 }
