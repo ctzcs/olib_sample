@@ -230,7 +230,7 @@ snapshots for the selected shader group, including relative image paths. The too
 preset JSON for you. Reset all restores Properties defaults; R restores one field. These snapshots
 do not edit Properties defaults or host material documents; document undo/redo belongs to the host.
 Drag the inspector's right edge to resize it, or use Hide/Panel to collapse it. Narrow panels
-use an overlay inspector. Hosts can supply `Preview_Hooks` for custom meshes and draw input.
+use an overlay inspector. Hosts can supply `Preview_Hooks` to record their own sprites or models for material effects.
 
 Select the 2D or 3D workspace, then **二维拖尾** or **三维拖尾** for a multi-pass example: scene rendering,
 half-resolution horizontal/vertical blur, then previous-frame feedback. The declarations live

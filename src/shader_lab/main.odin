@@ -27,12 +27,13 @@ main :: proc() {
 	for arg, i in os.args {
 		if arg == "source" && i+1 < len(os.args) do source = os.args[i+1]
 	}
+	// prepare 按 features 决定隔离源码里带哪些效果，须先设置。
+	host.validation.features = appkit.has_arg(os.args, "features")
 	if !checks.prepare(&host.validation, &host.tool, source,
 		appkit.has_arg(os.args, "shot"), appkit.has_arg(os.args, "smoke") || appkit.has_arg(os.args, "features"),
 		appkit.has_arg(os.args, "colors"), appkit.has_arg(os.args, "multipass") || appkit.has_arg(os.args, "hierarchy") || appkit.has_arg(os.args, "targets")) {
 		os.exit(1)
 	}
-	host.validation.features = appkit.has_arg(os.args, "features")
 	host.validation.hierarchy = appkit.has_arg(os.args, "hierarchy")
 	host.validation.targets = appkit.has_arg(os.args, "targets")
 	host.embedded = appkit.has_arg(os.args, "embedded")

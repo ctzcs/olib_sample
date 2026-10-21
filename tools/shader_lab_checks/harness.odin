@@ -18,8 +18,10 @@ prepare_smoke :: proc(s: ^State) -> bool {
 	}
 	s.temp_root = root
 	// 纯 shot 额外带上 2D 材质效果，最后一步截它的材质预览；其他验证模式保持原来的两组 Shader。
-	names := s.shot && !s.smoke ? []string{"Preview2D.oshader", "Preview3D.oshader", "Palette.hlsli", "SpriteShadow.oshader"} :
-		[]string{"Preview2D.oshader", "Preview3D.oshader", "Palette.hlsli"}
+	names := []string{"Preview2D.oshader", "Preview3D.oshader", "Palette.hlsli"}
+	if s.shot && !s.smoke do names = {"Preview2D.oshader", "Preview3D.oshader", "Palette.hlsli", "SpriteShadow.oshader"}
+	// features 额外带上 2D 材质效果 SpriteShadow 验证录制式自定义预览；它排在两个预览之后，参数组下标不变。
+	if s.features do names = {"Preview2D.oshader", "Preview3D.oshader", "Palette.hlsli", "SpriteShadow.oshader"}
 	for name in names {
 		bytes, err := os.read_entire_file(fmt.tprintf("%s/%s", s.source_root, name), context.temp_allocator)
 		if err != nil || os.write_entire_file(fmt.tprintf("%s/%s", root, name), bytes) != nil do return false
@@ -451,7 +453,7 @@ widget_present :: proc(s: ^State, id: string) -> bool {
 }
 
 // shot 的最后一步：切到 2D 材质效果 SpriteShadow（两个 Pass、带 [Instance] 字段），等它的 Shader 编译生效后截图，
-// 确认材质预览（r2d.material_draw，字段走顶点 storage buffer）能编译、绑定并画出。返回 true 表示完成。
+// 确认材质预览（与游戏一样走 Render2D，字段走顶点 storage buffer）能编译、绑定并画出。返回 true 表示完成。
 shot_material_sprite :: proc(s: ^State) -> bool {
 	if s.material_step == 0 {
 		index := -1

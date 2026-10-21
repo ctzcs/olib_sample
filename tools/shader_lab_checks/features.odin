@@ -5,6 +5,9 @@ import "core:fmt"
 import "core:os"
 
 import foster "olib:foster"
+import r2d "olib:kit/rendering/2d"
+import r3d "olib:kit/rendering/3d"
+import mat "olib:kit/rendering/material"
 import lab "olib:kit/tools/shader_lab"
 
 feature_image :: proc(s: ^State, color: foster.Color) {
@@ -13,21 +16,15 @@ feature_image :: proc(s: ^State, color: foster.Color) {
 	check(s, foster.ImageWritePng(&image, fmt.tprintf("%s/feature.png", s.temp_root)), "write feature image")
 }
 
-feature_prepare :: proc(data: rawptr, frame: lab.Preview_Frame, command: ^foster.DrawCommand) -> bool {
+// 录制式自定义预览：宿主用游戏同一套 API 记录自己的几何（左上角的小精灵代替居中预览），Shader Lab 负责提交。
+feature_record :: proc(data: rawptr, frame: lab.Preview_Frame, material: ^mat.Material,
+	sprites: ^r2d.Render2D, _: ^r3d.Render3D) -> bool {
 	s := cast(^State)data
-	s.feature_prepare += 1
-	if frame.dimension != "3d" do return false
-	foster.DrawCommandFromMesh(command, frame.target, &s.meshes[2], frame.material)
-	command.DepthTestEnabled = true
-	command.DepthWriteEnabled = true
-	command.CullMode = .Back
-	return true
-}
-
-feature_draw :: proc(data: rawptr, frame: lab.Preview_Frame, command: ^foster.DrawCommand) {
-	s := cast(^State)data
-	s.feature_draw += 1
-	foster.GraphicsDeviceDraw(frame.device, command)
+	s.feature_record += 1
+	if sprites == nil do return false
+	texture := &s.sprite_texture
+	return r2d.image(sprites, foster.SubtextureFromTexture(texture), {0.25, 0, 0, 0.25, 32, 32},
+		material = material, pass_id = mat.Pass_Id(frame.pass)) == .None
 }
 
 validate_features :: proc(s: ^State, app: ^foster.App) {
@@ -67,8 +64,6 @@ validate_features :: proc(s: ^State, app: ^foster.App) {
 		feature_image(s, foster.Blue)
 		select_parameter_effect(s, 1)
 		s.mode = 2
-		s.preview_hooks = {s, feature_prepare, feature_draw}
-		s.custom_preview = true
 		s.parameter_revision = s.shaders[1].revision
 		s.parameter_watch.has_attempted = false
 		s.smoke_step = 1
@@ -81,8 +76,29 @@ validate_features :: proc(s: ^State, app: ^foster.App) {
 		pixels := foster.TextureDownloadData(&p.textures[0])
 		defer delete(pixels)
 		if waiting(s, len(pixels) >= 4 && pixels[0] == 0 && pixels[2] == 255, "texture file refresh reaches GPU") do return
-		check(s, s.feature_prepare > 0 && s.feature_draw > 0, "host prepare/probe and draw callbacks used")
+		// 接着检查录制式自定义预览：先记下材质效果 SpriteShadow 的内置预览，再让宿主记录自己的几何。
+		for e, i in s.effects {
+			if e.desc.name == "SpriteShadow" do lab.select_effect(s.tool, i)
+		}
+		check(s, s.selected_effect >= 0 && s.effects[s.selected_effect].desc.name == "SpriteShadow",
+			"SpriteShadow material effect selected")
+		s.smoke_step = 5
+		return
+	}
+	if s.smoke_step == 5 {
+		if waiting(s, preview_ready(s), "SpriteShadow built-in preview drawn") do return
+		s.feature_builtin = scene_hash(s)
+		s.preview_hooks = {s, feature_record}
+		s.custom_preview = true
+		s.smoke_step = 6
+		return
+	}
+	if s.smoke_step == 6 {
+		if waiting(s, s.feature_record > 0 && scene_hash(s) != s.feature_builtin, "host record callback replaces the built-in sprite") do return
+		check(s, s.bank_error == "", fmt.tprintf("host-recorded preview draws: %s", s.bank_error))
 		capture(s, "features-host")
+		s.custom_preview = false
+		select_parameter_effect(s, 1)
 		press_widget(s, app, "sidebar-splitter", 0.5)
 		s.smoke_step = 2
 		s.capture_index = 0
