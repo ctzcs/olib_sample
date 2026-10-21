@@ -110,6 +110,38 @@ validate_features :: proc(s: ^State, app: ^foster.App) {
 		ready := preview_ready(s) && s.effects[s.selected_effect].ready && s.bank_error == ""
 		if waiting(s, ready, "Swarm instanced model preview drawn") do return
 		capture(s, "features-swarm")
+		s.feature_template = 0
+		s.smoke_step = 8
+		return
+	}
+	// 新建着色器：每种模板写进隔离源码目录，等它编译、通过管线探测并被自动选中。
+	if s.smoke_step == 8 {
+		template := lab.Shader_Template(s.feature_template)
+		_, base, _ := lab.template_source(template)
+		if s.feature_template_written != s.feature_template + 1 {
+			_, reason := lab.new_shader(s.tool, template)
+			check(s, reason == "", fmt.tprintf("new %v shader written: %s", template, reason))
+			s.feature_template_written = s.feature_template + 1
+			return
+		}
+		e := s.selected_effect
+		ready := e >= 0 && s.effects[e].desc.name == base && s.effects[e].ready && preview_ready(s) && s.bank_error == ""
+		if waiting(s, ready, fmt.tprintf("new %v shader compiled and selected", template)) do return
+		s.feature_template += 1
+		if s.feature_template < len(lab.Shader_Template) do return
+		capture(s, "features-new-shader")
+		// 打开效果菜单看新建按钮（下一帧的输出里才有菜单）。
+		s.effect_menu = true
+		s.smoke_step = 9
+		return
+	}
+	if s.smoke_step == 9 || s.smoke_step == 10 {
+		s.smoke_step += 1
+		return
+	}
+	if s.smoke_step == 11 {
+		capture(s, "features-effect-menu")
+		s.effect_menu = false
 		select_parameter_effect(s, 1)
 		press_widget(s, app, "sidebar-splitter", 0.5)
 		s.smoke_step = 2

@@ -19,6 +19,7 @@ State :: struct {
 	graph_hash: u64,
 	fixed_pass_y, fixed_tabs_y, saved_scroll_y: f32,
 	feature_record: int,
+	feature_template, feature_template_written: int, // 新建着色器步骤：当前模板与已写出的模板（+1）
 	feature_builtin: u64,
 	feature_texture: int,
 	feature_next: f64,
