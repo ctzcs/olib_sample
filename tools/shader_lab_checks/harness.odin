@@ -20,8 +20,8 @@ prepare_smoke :: proc(s: ^State) -> bool {
 	// 纯 shot 额外带上 2D 材质效果，最后一步截它的材质预览；其他验证模式保持原来的两组 Shader。
 	names := []string{"Preview2D.oshader", "Preview3D.oshader", "Palette.hlsli"}
 	if s.shot && !s.smoke do names = {"Preview2D.oshader", "Preview3D.oshader", "Palette.hlsli", "SpriteShadow.oshader"}
-	// features 额外带上 2D 材质效果 SpriteShadow 验证录制式自定义预览；它排在两个预览之后，参数组下标不变。
-	if s.features do names = {"Preview2D.oshader", "Preview3D.oshader", "Palette.hlsli", "SpriteShadow.oshader"}
+	// features 额外带上 2D 材质效果 SpriteShadow（录制式自定义预览）和 instanced 模型 Swarm；它们排在两个预览之后，参数组下标不变。
+	if s.features do names = {"Preview2D.oshader", "Preview3D.oshader", "Palette.hlsli", "SpriteShadow.oshader", "Swarm.oshader"}
 	for name in names {
 		bytes, err := os.read_entire_file(fmt.tprintf("%s/%s", s.source_root, name), context.temp_allocator)
 		if err != nil || os.write_entire_file(fmt.tprintf("%s/%s", root, name), bytes) != nil do return false

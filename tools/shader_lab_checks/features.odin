@@ -98,6 +98,18 @@ validate_features :: proc(s: ^State, app: ^foster.App) {
 		check(s, s.bank_error == "", fmt.tprintf("host-recorded preview draws: %s", s.bank_error))
 		capture(s, "features-host")
 		s.custom_preview = false
+		// instanced 模型：管线探测与 Render3D 一样带实例缓冲，预览由 Render3D 自动实例化。
+		for e, i in s.effects {
+			if e.desc.name == "Swarm" do lab.select_effect(s.tool, i)
+		}
+		check(s, s.selected_effect >= 0 && s.effects[s.selected_effect].desc.name == "Swarm", "Swarm instanced effect selected")
+		s.smoke_step = 7
+		return
+	}
+	if s.smoke_step == 7 {
+		ready := preview_ready(s) && s.effects[s.selected_effect].ready && s.bank_error == ""
+		if waiting(s, ready, "Swarm instanced model preview drawn") do return
+		capture(s, "features-swarm")
 		select_parameter_effect(s, 1)
 		press_widget(s, app, "sidebar-splitter", 0.5)
 		s.smoke_step = 2
