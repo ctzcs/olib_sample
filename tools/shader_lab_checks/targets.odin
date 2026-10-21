@@ -57,7 +57,7 @@ validate_targets :: proc(s: ^State, app: ^foster.App) {
 		resize_window(s, app, {960, 720})
 	case 2:
 		if waiting(s, resized(s, app), "window resize applied") do return
-		// 单步要在已就绪的效果上推进，否则那次渲染只会丢弃单步请求。
+		// 单步要在已就绪的 Shader 上推进，否则那次渲染只会丢弃单步请求。
 		if waiting(s, s.shaders[s.selected_shader].ready, "Trail3D drawn at the resized output") do return
 		e := &s.shaders[s.selected_shader]
 		check(s, len(e.targets) == 4 && e.targets[0].history &&

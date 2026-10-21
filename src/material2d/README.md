@@ -23,7 +23,7 @@ odin run tools/shader_lab_assets -collection:olib=../olib -out:build/shader_lab_
 ```
 
 本例使用实例 storage buffer，支持原生 Vulkan、D3D12、Metal，不支持 Web。
-Web 可用的内置精灵/MSDF 效果见 olib 的 Render2D README。
+Web 可用的内置精灵/MSDF Shader 见 olib 的 Render2D README。
 
 ## 百万精灵（Swarm）
 

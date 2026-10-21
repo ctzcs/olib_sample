@@ -17,10 +17,10 @@ prepare_smoke :: proc(s: ^State) -> bool {
 		return false
 	}
 	s.temp_root = root
-	// 纯 shot 额外带上 2D 材质效果，最后一步截它的材质预览；其他验证模式保持原来的两组 Shader。
+	// 纯 shot 额外带上 2D 材质 Shader，最后一步截它的材质预览；其他验证模式保持原来的两组 Shader。
 	names := []string{"Preview2D.oshader", "Preview3D.oshader", "Palette.hlsli"}
 	if s.shot && !s.smoke do names = {"Preview2D.oshader", "Preview3D.oshader", "Palette.hlsli", "SpriteShadow.oshader"}
-	// features 额外带上 2D 材质效果 SpriteShadow（录制式自定义预览）和 instanced 模型 Swarm；它们排在两个预览之后，参数组下标不变。
+	// features 额外带上 2D 材质 Shader SpriteShadow（录制式自定义预览）和 instanced 模型 Swarm；它们排在两个预览之后，参数组下标不变。
 	if s.features do names = {"Preview2D.oshader", "Preview3D.oshader", "Palette.hlsli", "SpriteShadow.oshader", "Swarm.oshader"}
 	for name in names {
 		bytes, err := os.read_entire_file(fmt.tprintf("%s/%s", s.source_root, name), context.temp_allocator)
@@ -62,7 +62,7 @@ fixture_replace :: proc(s: ^State, text, anchor, replacement: string) -> string 
 	return result
 }
 
-// 候选包已提交，选中效果的目标与 Shader 已就绪并在最近一次渲染里画出。
+// 候选包已提交，选中 Shader 的目标与 Shader 已就绪并在最近一次渲染里画出。
 preview_ready :: proc(s: ^State) -> bool {
 	return s.program_count >= 2 && s.pending_bank == nil && s.selected_shader >= 0 && s.shaders[s.selected_shader].ready
 }
@@ -452,7 +452,7 @@ widget_present :: proc(s: ^State, id: string) -> bool {
 	return false
 }
 
-// shot 的最后一步：切到 2D 材质效果 SpriteShadow（两个 Pass、带 [Instance] 字段），等它的 Shader 编译生效后截图，
+// shot 的最后一步：切到 2D 材质 Shader SpriteShadow（两个 Pass、带 [Instance] 字段），等它的 Shader 编译生效后截图，
 // 确认材质预览（与游戏一样走 Render2D，字段走顶点 storage buffer）能编译、绑定并画出。返回 true 表示完成。
 shot_material_sprite :: proc(s: ^State) -> bool {
 	if s.material_step == 0 {

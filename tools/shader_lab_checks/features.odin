@@ -76,7 +76,7 @@ validate_features :: proc(s: ^State, app: ^foster.App) {
 		pixels := foster.TextureDownloadData(&p.textures[0])
 		defer delete(pixels)
 		if waiting(s, len(pixels) >= 4 && pixels[0] == 0 && pixels[2] == 255, "texture file refresh reaches GPU") do return
-		// 接着检查录制式自定义预览：先记下材质效果 SpriteShadow 的内置预览，再让宿主记录自己的几何。
+		// 接着检查录制式自定义预览：先记下材质 Shader SpriteShadow 的内置预览，再让宿主记录自己的几何。
 		for e, i in s.shaders {
 			if e.desc.name == "SpriteShadow" do lab.select_shader(s.tool, i)
 		}
@@ -130,7 +130,7 @@ validate_features :: proc(s: ^State, app: ^foster.App) {
 		s.feature_template += 1
 		if s.feature_template < len(lab.Shader_Template) do return
 		capture(s, "features-new-shader")
-		// 打开效果菜单看新建按钮（下一帧的输出里才有菜单）。
+		// 打开 Shader 菜单看新建按钮（下一帧的输出里才有菜单）。
 		s.shader_menu = true
 		s.smoke_step = 9
 		return

@@ -19,10 +19,10 @@ msdf-atlas-gen -font path/to/NotoSansCJKsc-Regular.otf -charset shared/msdf_font
 
 Expected: 512/512 glyphs, 1156×1156 atlas. Keep PNG and JSON together.
 New characters require updating the charset, regenerating and rebuilding the sample.
-Shader Lab labels (effect, Pass, Shader, folder and field labels in `src/shader_lab/shaders/*.oshader`) are collected
+Shader Lab labels (Shader, Pass, parameter group, folder and field labels in `src/shader_lab/shaders/*.oshader`) are collected
 by `odin run tools/msdf_charset -collection:olib=../olib`, which appends missing codepoints to `charset.txt`
 (it never removes any); add `-- -check` to only report them. Regenerate the atlas afterwards.
-Shader Lab logs missing effect/Pass/Shader/folder/parameter-label glyphs after hot reload; it does not regenerate fonts.
+Shader Lab logs missing Shader/Pass/group/folder/parameter-label glyphs after hot reload; it does not regenerate fonts.
 
 `font <atlas-prefix>` in `game_ui` / `ui_gallery` loads `<atlas-prefix>.png` and
 `<atlas-prefix>.json`. The loader checks `type=msdf`, `yOrigin=top` and matching image dimensions.

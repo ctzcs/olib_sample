@@ -1,6 +1,6 @@
 package main
 
-// 从 .oshader 收集 Shader Lab 会显示的效果、Pass、Shader、文件夹和字段标签，把缺的字补进共享 MSDF 字符集。
+// 从 .oshader 收集 Shader Lab 会显示的 Shader、Pass、Shader、文件夹和字段标签，把缺的字补进共享 MSDF 字符集。
 // 只追加不删除；之后按 shared/msdf_font/README.md 重新生成图集。-check 只报告缺字，有缺字时退出码为 1。
 //   odin run tools/msdf_charset -collection:olib=../olib [-- [-check] [<oshader 目录>...]]
 import "core:fmt"

@@ -230,19 +230,19 @@ snapshots for the selected shader group, including relative image paths. The too
 preset JSON for you. Reset all restores Properties defaults; R restores one field. These snapshots
 do not edit Properties defaults or host material documents; document undo/redo belongs to the host.
 Drag the inspector's right edge to resize it, or use Hide/Panel to collapse it. Narrow panels
-use an overlay inspector. Hosts can supply `Preview_Hooks` to record their own sprites or models for material effects.
+use an overlay inspector. Hosts can supply `Preview_Hooks` to record their own sprites or models for material shaders.
 
 Select the 2D or 3D workspace, then **二维拖尾** or **三维拖尾** for a multi-pass example: scene rendering,
 half-resolution horizontal/vertical blur, then previous-frame feedback. The declarations live
 in `src/shader_lab/shaders/Trail2D.oshader` and `Trail3D.oshader`.
 Click a Pass to edit its parameters; use the preview toolbar to choose final or intermediate output.
-Each file contributes one Effect; Input and Value refer to stable field IDs.
-Pause freezes feedback; Step advances once; Reset history clears it. Only the selected Effect owns
+Each `.oshader` file is one Shader; Input and Value refer to stable field IDs.
+Pause freezes feedback; Step advances once; Reset history clears it. Only the selected Shader owns
 RenderTextures; switching releases them and recreates them on return, resetting feedback history.
 Floating-point targets and MSAA are supported; the UI stays outside
-the effect chain. See the [Pass syntax](../olib/kit/rendering/shader/lang/README.md#pass-与目标).
+the pass chain. See the [Pass syntax](../olib/kit/rendering/shader/lang/README.md#pass-与目标).
 
-Choose fullscreen/sprite for 2D, sphere/cube for 3D; the sidebar separates Effect, Pass and Shader parameters.
+Choose fullscreen/sprite for 2D, sphere/cube for 3D; the sidebar separates Shader, Pass and parameter groups.
 Pause freezes time; right-drag orbits the camera and wheel zooms.
 Tab/Enter/arrows navigate controls. `source <directory>` selects a custom source root.
 Use the sample vertex/engine-input interfaces when adding shaders. Properties automatically

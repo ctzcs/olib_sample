@@ -26,7 +26,7 @@ State :: struct {
 	shot, smoke, color_smoke, color_test_blur, failed: bool,
 	done: bool, // 走到最后一步（见 finish）
 	capture_index, smoke_step, validated_serial: int,
-	material_step: int, // shot 最后一步：0 表示还没切到 2D 材质效果
+	material_step: int, // shot 最后一步：0 表示还没切到 2D 材质 Shader
 	parameter_source, binding_source, temp_root: string,
 	parameter_revision: u64,
 	initial_resources: [2]rawptr,

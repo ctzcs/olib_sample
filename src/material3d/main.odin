@@ -1,6 +1,6 @@
 package main
 
-// 两个模型共用 Shader/Effect，分别持有 Material 实例。无 shaderdev 或 Shader Lab 依赖。
+// 两个模型共用 Shader，分别持有 Material 实例。无 shaderdev 或 Shader Lab 依赖。
 import "core:fmt"
 import "core:math"
 import "core:math/linalg"
@@ -125,7 +125,7 @@ startup :: proc(app: ^foster.App) {
 	s := foster.AppGetUserDataAs(app, State)
 	device := &app.GraphicsDevice
 	s.materials = {device = device, storage = &s.resources}
-	// 登记 Shader Lab 产物目录里的材质效果（本例用 Outlined 与 Swarm）；只供预览的效果自动跳过。
+	// 登记 Shader Lab 产物目录里的材质 Shader（本例用 Outlined 与 Swarm）；只供预览的 Shader 自动跳过。
 	if reason := mat.material_register_directory(&s.materials, #load_directory("../shader_lab/shaders/Compiled")); reason != "" {
 		fail(app, reason)
 		return

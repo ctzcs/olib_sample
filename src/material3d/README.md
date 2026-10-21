@@ -1,7 +1,7 @@
 # 从 Shader Lab 到 Render3D
 
 在 olib_sample 根目录运行 `run.bat material3d`。左球读取这里的 material.json，右球是独立材质实例；
-两者共用 Effect 和 GPU Shader。示例使用静态网格、最终像素尺寸的 4x MSAA，运行端没有编辑器依赖。
+两者共用 Shader 和它的 GPU 程序。示例使用静态网格、最终像素尺寸的 4x MSAA，运行端没有编辑器依赖。
 
 - 空格：切换描边；G：先全部 body 再全部 outline / 逐模型全部 Pass。
 - V：第二视图。先把同一份记录的 body 提交到侧面相机（关闭调试线），再提交主视图的 body/outline。
@@ -29,8 +29,8 @@ View 使用原有 Camera3D 的 view_projection 和 view_matrix；Render3D 不修
 多 Pass、剔除与排序规则见 [Render3D README](../../../olib/kit/rendering/3d/README.md)。
 
 初始化时用 `mat.material_register_directory(&materials, #load_directory("../shader_lab/shaders/Compiled"))`
-一次登记产物目录里的材质效果（只供 Shader Lab 预览的效果自动跳过），库负责 Shader、贴图、绑定和统一释放。
-在 .oshader 里增删 Pass 或效果后只需重新生成 Compiled，不改 Odin 代码。
+一次登记产物目录里的材质 Shader（只供 Shader Lab 预览的 Shader 自动跳过），库负责 GPU 程序、贴图、绑定和统一释放。
+在 .oshader 里增删 Pass 或 Shader 后只需重新生成 Compiled，不改 Odin 代码。
 material_set_number 影响之后的记录。R 不重编 Shader、不刷新缓存贴图；失败保留原材质。
 
 ## 自动实例化与常驻实例
@@ -79,7 +79,7 @@ models 的 render CPU 包含每帧记录、bounds 转换；submit 包含剔除�
 3. `run.bat material3d <导出路径>`，或覆盖本例 material.json 后按 R。
 
 资源通过 foster.StorageContainer 读取，根目录为所选材质文件所在目录。
-效果源码在 `../shader_lab/shaders/Outlined.oshader` 和 `Swarm.oshader`，运行时只读取编译后的清单和字节码。
+Shader 源码在 `../shader_lab/shaders/Outlined.oshader` 和 `Swarm.oshader`，运行时只读取编译后的清单和字节码。
 修改 HLSL / 参数布局后，在示例仓库根重新生成 Shader 并重建：
 
 ```sh
