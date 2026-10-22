@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "files": [
+    {
+      "path": "MeshView.oshader",
+      "hash": "ae618166eb75f90b"
+    },
+    {
+      "path": "olib/fullscreen.hlsli",
+      "hash": "ec13d55531b78495"
+    },
+    {
+      "path": "olib/instance.hlsli",
+      "hash": "510a397a69a640ba"
+    },
+    {
+      "path": "olib/model.hlsli",
+      "hash": "b80c33d8334ac722"
+    },
+    {
+      "path": "olib/sprite.hlsli",
+      "hash": "bddea0ee037a6ec4"
+    },
+    {
+      "path": "olib/sprite_vertex.hlsli",
+      "hash": "97b96b858b251d71"
+    }
+  ]
+}

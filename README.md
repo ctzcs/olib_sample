@@ -61,6 +61,24 @@ See [editor guidelines](../olib/prompts/editor-guidelines.md) for the shared pro
 `odin test src/gizmo2d -collection:olib=../olib -vet` verifies transactions, atomic rejection, capture and release-frame updates;
 these tests are also discovered by olib's `tools/check`.
 
+Mesh inspection (core/meshutil + kit/gizmo wireframe):
+
+```bat
+run.bat meshview
+run.bat meshview path\to\model.dasset
+run.bat meshview shot
+```
+
+`meshview` draws a model with `gizmo.wireframe_draw` on top and shows `meshutil.stats`:
+triangles, used vertices vs. unique positions, and seam (blue), border/hole (orange) and
+non-manifold (red) edge counts. Without an argument it shows a built-in bumpy UV sphere with a
+deliberate hole. S / Right simplifies one more level (half the triangles each time, from the original
+mesh, stopping at 5% error); A / Left goes back. W toggles the wireframe, M the model, X shows hidden
+edges at full strength. All primitives of a `.dasset` are merged; skinned models show their bind pose.
+`shot` saves `library/screenshots/meshview.png` and `meshview-simplified.png` (level 3) and exits.
+The surface shader is `src/meshview/shaders/MeshView.oshader`; after editing it run
+`odin run ../olib/tools/shaders -- -dir:src/meshview/shaders`.
+
 kit/ui:
 
 ```bat
