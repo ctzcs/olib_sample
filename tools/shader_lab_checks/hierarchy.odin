@@ -185,7 +185,16 @@ validate_hierarchy :: proc(s: ^State, app: ^foster.App) {
 			len(s.shaders) == 4 && s.program_count == 11 && lab.parameter_number(s.tool, 1, "hue") == 0.15,
 			"single to multi-Pass edit retains shader identity, selection and values")
 		check(s, widget_present(s, "pass-preview"), "multiple Passes expose intermediate preview")
-		finish(s, app, "PASS: explicit shaders only, Pass programs excluded, single/multi-Pass rendering, workspace restoration, preview sizing and real ImGui input")
+		press_widget(s, app, "shader-menu", 0.5)
+	case 36, 38:
+		release_pointer(s, app)
+	case 37:
+		check(s, s.shader_menu && widget_present(s, "shader:Preview3D"), "shader menu button opens the menu")
+		press_widget(s, app, "shader-menu", 0.5)
+	case 39:
+		// ImGui 在按下时因点击浮层外关闭菜单；之后几帧不能被重新打开（会闪一下且关不掉）。
+		check(s, !s.shader_menu && !widget_present(s, "shader:Preview3D"), "clicking the button again closes the menu for good")
+		finish(s, app, "PASS: explicit shaders only, Pass programs excluded, single/multi-Pass rendering, workspace restoration, preview sizing, menu toggle and real ImGui input")
 	}
 	s.smoke_step += 1
 }
