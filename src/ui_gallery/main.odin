@@ -10,7 +10,8 @@ import ui "olib:kit/ui"
 import foster "olib:foster"
 import clay "olib:thirdparty/clay-odin"
 
-// 设置 + 滚动背包 + 模态确认；可运行，也可用 shot 参数自动输出验收图。
+// 设置 + 滚动背包 + 模态确认；controls 参数换成文本框/下拉框/拖放/虚拟列表页。
+// 可运行，也可用 shot 参数自动输出验收图。
 game: foster.App
 ctx: ui.UI_Context
 theme: ui.UI_Theme
@@ -28,6 +29,13 @@ frame: int
 shot, pending: bool
 capture: foster.Target
 ui_scale: f32 = 1
+controls: bool
+player_name: [dynamic]u8
+saved_name: string
+quality: int = 1
+QUALITY := [?]string{"Low", "Medium", "High", "Ultra"}
+slots := [12]int{0, 1, -1, 0, -1, 1, -1, -1, 0, -1, -1, 1} // 每格的物品种类，-1 为空
+LOG_ROWS :: 10000
 
 main :: proc() {
 	for arg, i in os.args {
@@ -37,6 +45,7 @@ main :: proc() {
 	}
 	shot = app.has_arg(os.args, "shot")
 	dialog = app.has_arg(os.args, "modal")
+	controls = app.has_arg(os.args, "controls")
 	if app.has_arg(os.args, "scaled") {
 		ui_scale = 1.25
 	}
@@ -77,6 +86,12 @@ startup :: proc(g: ^foster.App) {
 		output := foster.DrawableTargetFromWindow(&g.Window)
 		foster.TargetInit(&capture, &g.GraphicsDevice, output.WidthInPixels, output.HeightInPixels)
 	}
+	if shot && controls {
+		// 验收图：文本框正在编辑、下拉框展开。
+		append(&player_name, "Player One")
+		ui.ui_focus(&ctx, "name")
+		ctx.dropdown_id = clay.ID("quality").id
+	}
 }
 
 shutdown :: proc(g: ^foster.App) {
@@ -86,13 +101,16 @@ shutdown :: proc(g: ^foster.App) {
 	foster.TextureDispose(&font_texture)
 	foster.TextureDispose(&icons)
 	foster.MsdfFontDispose(&font)
+	delete(player_name)
+	delete(saved_name)
 	if shot {
 		foster.TargetDispose(&capture)
 	}
 }
 
 update :: proc(g: ^foster.App) {
-	if foster.KeyboardPressed(&g.Input.State.Keyboard, .Escape) {
+	// 编辑文字或下拉框展开时 Escape 交给 UI。
+	if foster.KeyboardPressed(&g.Input.State.Keyboard, .Escape) && !ui.ui_text_editing(&ctx) && ctx.dropdown_id == 0 {
 		if dialog {
 			dialog = false
 		} else {
@@ -124,7 +142,28 @@ render :: proc(g: ^foster.App) {
 	}
 	nav.activate = foster.KeyboardPressed(keyboard, .Enter)
 	nav.adjust = f32(int(foster.PressedOrRepeated(keyboard, .Right)) - int(foster.PressedOrRepeated(keyboard, .Left)))
+	nav.cancel = ctx.dropdown_id != 0 && foster.KeyboardPressed(keyboard, .Escape)
 	ui.ui_set_navigation(&ctx, nav)
+	// 文字编辑：键入文字（含输入法提交）与编辑键；Ctrl+V 粘贴剪贴板。
+	edit := ui.UI_Text_Edit{
+		text = keyboard.Text,
+		backspace = foster.PressedOrRepeated(keyboard, .Backspace),
+		delete = foster.PressedOrRepeated(keyboard, .Delete),
+		left = foster.PressedOrRepeated(keyboard, .Left),
+		right = foster.PressedOrRepeated(keyboard, .Right),
+		home = foster.KeyboardPressed(keyboard, .Home),
+		end = foster.KeyboardPressed(keyboard, .End),
+		submit = foster.KeyboardPressed(keyboard, .Enter),
+		cancel = foster.KeyboardPressed(keyboard, .Escape),
+	}
+	clipboard: string
+	defer delete(clipboard)
+	ctrl := foster.KeyboardDown(keyboard, .LeftControl) || foster.KeyboardDown(keyboard, .RightControl)
+	if ctrl && foster.KeyboardPressed(keyboard, .V) {
+		clipboard = foster.GetClipboardString(&g.Input)
+		edit.paste = clipboard
+	}
+	ui.ui_set_text_edit(&ctx, edit)
 	ui.ui_set_modal(&ctx, dialog ? "confirm-dialog" : "")
 	ui.ui_begin(&ctx, g.Time.Delta)
 
@@ -144,6 +183,8 @@ render :: proc(g: ^foster.App) {
 				ui.ui_button(&ctx, &theme, "font-back", "返回")
 				ui.ui_button_ex(&ctx, &theme, "font-confirm", "确认", .Primary)
 			}
+		} else if controls {
+			controls_page()
 		} else {
 			if clay.UI()(ui.ui_row_decl(24)) {
 				panel := ui.ui_panel_decl(&theme, 18, 300)
@@ -210,6 +251,11 @@ render :: proc(g: ^foster.App) {
 		ui.ui_set_scope(&ctx, "")
 	}
 	ui.ui_draw(&ctx, &renderer)
+	// 文本框编辑时打开系统文字输入，并把光标位置交给输入法候选框。
+	foster.SetTextInput(&g.Window, ui.ui_text_editing(&ctx))
+	if area, editing := ui.ui_text_input_area(&ctx); editing {
+		foster.SetTextInputArea(&g.Window, area)
+	}
 	if !ui.ui_input_capture(&ctx).pointer && foster.MousePressed(&mouse, .Left) {
 		world_clicks += 1
 	}
@@ -245,8 +291,9 @@ save_capture :: proc() {
 	for &pixel, i in image.Pixels {
 		pixel = {bytes[i * 4], bytes[i * 4 + 1], bytes[i * 4 + 2], bytes[i * 4 + 3]}
 	}
-	name := fmt.tprintf("ui-gallery%s%s%s%s.png",
+	name := fmt.tprintf("ui-gallery%s%s%s%s%s.png",
 		app.has_arg(os.args, "msdf") ? "-msdf" : "",
+		controls ? "-controls" : "",
 		app.has_arg(os.args, "scaled") ? "-scaled" : "",
 		app.has_arg(os.args, "narrow") ? "-narrow" : "",
 		app.has_arg(os.args, "modal") ? "-modal" : "")
@@ -254,4 +301,99 @@ save_capture :: proc() {
 	directory :: #directory + "/../../library/screenshots"
 	os.make_directory_all(directory)
 	fmt.println(name, foster.ImageWritePng(&image, fmt.tprintf("%s/%s", directory, name)))
+}
+
+// 文本框 + 下拉框、可拖放交换的格子、一万行虚拟列表。
+controls_page :: proc() {
+	row := ui.ui_row_decl(20)
+	row.layout.childAlignment.y = .Top
+	if clay.UI()(row) {
+		profile := ui.ui_panel_decl(&theme, 12, 300)
+		profile.id = clay.ID("profile-panel")
+		ui.ui_block_pointer(&ctx, "profile-panel")
+		if clay.UI()(profile) {
+			ui.ui_heading(&ctx, &theme, "Profile")
+			ui.ui_label(&ctx, &theme, "Name")
+			if ui.ui_text_input(&ctx, &theme, "name", &player_name, "Type a name", 250, 24).submitted {
+				delete(saved_name)
+				saved_name = fmt.aprintf("Saved: %s", string(player_name[:]))
+			}
+			ui.ui_label_dim(&ctx, &theme, saved_name == "" ? "Enter saves, Esc leaves the field" : saved_name)
+			ui.ui_label(&ctx, &theme, "Graphics quality")
+			ui.ui_dropdown(&ctx, &theme, "quality", QUALITY[:], &quality, 250)
+			ui.ui_label_dim(&ctx, &theme, fmt.tprintf("Quality: %s", QUALITY[quality]))
+		}
+		grid := ui.ui_panel_decl(&theme, 12, 300)
+		grid.id = clay.ID("grid-panel")
+		ui.ui_block_pointer(&ctx, "grid-panel")
+		if clay.UI()(grid) {
+			ui.ui_heading(&ctx, &theme, "Stash")
+			ui.ui_label_dim(&ctx, &theme, "Drag an item onto another slot to swap")
+			for row in 0..<4 {
+				if clay.UI()(ui.ui_row_decl(8)) {
+					for column in 0..<3 {
+						stash_slot(row*3 + column)
+					}
+				}
+			}
+		}
+		log := ui.ui_panel_decl(&theme, 12, 300)
+		log.id = clay.ID("log-panel")
+		ui.ui_block_pointer(&ctx, "log-panel")
+		if clay.UI()(log) {
+			ui.ui_heading(&ctx, &theme, "Event log")
+			r := ui.ui_virtual_range(&ctx, "log", LOG_ROWS, 28, 330)
+			if clay.UI()(ui.ui_scroll_decl(&ctx, "log", 330, gap = 0)) {
+				ui.ui_virtual_spacer(r.before)
+				for i in r.first..<r.last {
+					if clay.UI()(clay.ElementDeclaration{
+						layout = {sizing = {width = clay.SizingGrow({}), height = clay.SizingFixed(28)},
+							childAlignment = {y = .Center}},
+					}) {
+						ui.ui_label(&ctx, &theme, fmt.tprintf("Event %05d", i + 1))
+					}
+				}
+				ui.ui_virtual_spacer(r.after)
+			}
+			ui.ui_label_dim(&ctx, &theme, fmt.tprintf("Declared %d of %d rows", r.last - r.first, LOG_ROWS))
+		}
+	}
+	// 拖动预览跟随指针；Passthrough 让下面的格子仍能判定悬停与放置。
+	if payload, ok := ui.ui_dragging(&ctx); ok && slots[payload] >= 0 {
+		p := ui.ui_drag_position(&ctx)
+		if clay.UI()(clay.ElementDeclaration{
+			layout = {sizing = {width = clay.SizingFixed(48), height = clay.SizingFixed(48)}},
+			floating = {attachTo = .Root, offset = {p.x - 24, p.y - 24}, zIndex = 200, pointerCaptureMode = .Passthrough},
+		}) {
+			ui.ui_image(&ctx, item_icon(slots[payload]), 48, 48, {255, 255, 255, 200})
+		}
+	}
+}
+
+stash_slot :: proc(index: int) {
+	id := fmt.tprintf("slot-%d", index)
+	state := ui.ui_interact(&ctx, id)
+	dragging := slots[index] >= 0 && ui.ui_drag_source(&ctx, id, state, index)
+	payload, hovered, dropped := ui.ui_drop_target(&ctx, id)
+	if dropped && payload != index {
+		slots[index], slots[payload] = slots[payload], slots[index]
+	}
+	bg := hovered ? theme.button_hover : theme.button
+	if clay.UI()(clay.ElementDeclaration{
+		id = clay.ID(id),
+		layout = {sizing = {width = clay.SizingFixed(72), height = clay.SizingFixed(72)},
+			childAlignment = {x = .Center, y = .Center}},
+		backgroundColor = ui.ui_clay_color(bg),
+		border = {color = ui.ui_clay_color(hovered || state.focused ? theme.accent : theme.panel_border),
+			width = {left = 1, right = 1, top = 1, bottom = 1}},
+		cornerRadius = clay.CornerRadiusAll(theme.corner_radius),
+	}) {
+		if slots[index] >= 0 && !dragging {
+			ui.ui_image(&ctx, item_icon(slots[index]), 44, 44)
+		}
+	}
+}
+
+item_icon :: proc(kind: int) -> foster.Subtexture {
+	return foster.SubtextureFromSource(&icons, {f32(kind % 2)*32, 0, 32, 32})
 }
