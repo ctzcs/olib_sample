@@ -107,5 +107,46 @@ register_effects :: proc(library: ^mat.Material_Library) -> string {
 	if reason := mat.material_register_manifest(library, #load("shaders/Compiled/Sky.shader.json"), sky[:]); reason != "" do return reason
 	if reason := mat.material_register_manifest(library, #load("shaders/Compiled/Billboard.shader.json"), billboard[:]); reason != "" do return reason
 	if reason := mat.material_register_manifest(library, #load("shaders/Compiled/Blob.shader.json"), blob[:]); reason != "" do return reason
-	return mat.material_register_manifest(library, #load("shaders/Compiled/DepthEdge.shader.json"), edge[:])
+	if reason := mat.material_register_manifest(library, #load("shaders/Compiled/DepthEdge.shader.json"), edge[:]); reason != "" do return reason
+	ao := [?]mat.Pass_Binaries{
+		{
+			vertex = {
+				spv = #load("shaders/Compiled/AmbientOcclusion_ao.vertex.spv"),
+				dxil = #load("shaders/Compiled/AmbientOcclusion_ao.vertex.dxil"),
+				msl = #load("shaders/Compiled/AmbientOcclusion_ao.vertex.msl"),
+			},
+			fragment = {
+				spv = #load("shaders/Compiled/AmbientOcclusion_ao.fragment.spv"),
+				dxil = #load("shaders/Compiled/AmbientOcclusion_ao.fragment.dxil"),
+				msl = #load("shaders/Compiled/AmbientOcclusion_ao.fragment.msl"),
+			},
+		},
+	}
+	if reason := mat.material_register_manifest(library, #load("shaders/Compiled/AmbientOcclusion.shader.json"), ao[:]); reason != "" do return reason
+	sun := [?]mat.Pass_Binaries{{
+		vertex = {
+			spv = #load("shaders/Compiled/SunShadow_shadow.vertex.spv"),
+			dxil = #load("shaders/Compiled/SunShadow_shadow.vertex.dxil"),
+			msl = #load("shaders/Compiled/SunShadow_shadow.vertex.msl"),
+		},
+		fragment = {
+			spv = #load("shaders/Compiled/SunShadow_shadow.fragment.spv"),
+			dxil = #load("shaders/Compiled/SunShadow_shadow.fragment.dxil"),
+			msl = #load("shaders/Compiled/SunShadow_shadow.fragment.msl"),
+		},
+	}}
+	if reason := mat.material_register_manifest(library, #load("shaders/Compiled/SunShadow.shader.json"), sun[:]); reason != "" do return reason
+	water := [?]mat.Pass_Binaries{{
+		vertex = {
+			spv = #load("shaders/Compiled/Water_water.vertex.spv"),
+			dxil = #load("shaders/Compiled/Water_water.vertex.dxil"),
+			msl = #load("shaders/Compiled/Water_water.vertex.msl"),
+		},
+		fragment = {
+			spv = #load("shaders/Compiled/Water_water.fragment.spv"),
+			dxil = #load("shaders/Compiled/Water_water.fragment.dxil"),
+			msl = #load("shaders/Compiled/Water_water.fragment.msl"),
+		},
+	}}
+	return mat.material_register_manifest(library, #load("shaders/Compiled/Water.shader.json"), water[:])
 }

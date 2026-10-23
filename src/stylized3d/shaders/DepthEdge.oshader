@@ -10,7 +10,7 @@ Shader "DepthEdge"
     {
         _image ("Scene", 2D) = ""
         [Filter(Nearest)] _depth ("Depth", 2D) = ""
-        _edge ("Edge color", Color) = (0.12,0.12,0.30,0.7)
+        _edge ("Edge color", Color) = (0.22,0.23,0.28,0.40)
         _texel ("Texel size", Vector2(0,1)) = (0.002,0.004)
         _clip ("Near / far", Vector2(0,1000)) = (0.1,120)
         _threshold ("Threshold", Range(0,1)) = 0.04

@@ -3,20 +3,18 @@ package main
 import tween "olib:core/tween"
 import ui "olib:kit/ui"
 
-// 分区：动画状态 / 可打断补间 / 点击和弹窗编排
+// 分区：动画状态 / 可打断补间 / 卡牌动作和弹窗编排
 
 Motion :: struct {
 	visual: ui.UI_Visual,
 	handle: tween.Tween_Handle,
 	target: ui.UI_Visual,
-	action: bool, // 点击动作播完后再对齐最新悬停/焦点；普通过渡可随时改目标。
 }
 
 // 状态位于地址稳定的 Demo 内；重播先取消旧句柄，从当前值接续。
 move_to :: proc(s: ^Demo, motion: ^Motion, target: ui.UI_Visual, duration: f32) {
 	tween.manager_kill(&s.tweens, motion.handle)
 	motion.target = target
-	motion.action = false
 	motion.handle = tween.manager_add_tween_to(&s.tweens,
 		tween.make_ex(motion.visual, target, 0,
 			{duration = duration, transition = .EaseOut}, ui.ui_visual_lerp), &motion.visual)
@@ -24,7 +22,6 @@ move_to :: proc(s: ^Demo, motion: ^Motion, target: ui.UI_Visual, duration: f32) 
 
 sequence_start :: proc(s: ^Demo, motion: ^Motion) -> tween.Tween_Handle {
 	tween.manager_kill(&s.tweens, motion.handle)
-	motion.action = true
 	motion.handle = tween.manager_add_sequence(&s.tweens)
 	return motion.handle
 }
@@ -49,8 +46,7 @@ rebound :: proc(s: ^Demo, motion: ^Motion) {
 	sequence_step(s, motion, settle, ui.UI_VISUAL_DEFAULT, 0.085)
 }
 
-jump :: proc(s: ^Demo) {
-	m := &s.tiles[1]
+jump :: proc(s: ^Demo, m: ^Motion) {
 	sequence_start(s, m)
 	windup := ui.UI_VISUAL_DEFAULT
 	windup.scale = {1.10, 0.88}
@@ -67,7 +63,36 @@ jump :: proc(s: ^Demo) {
 	sequence_step(s, m, windup, peak, 0.15)
 	sequence_step(s, m, peak, land, 0.16)
 	sequence_step(s, m, land, ui.UI_VISUAL_DEFAULT, 0.13)
-	s.rewards += 1
+}
+
+// 出招：后撤蓄力，向上前冲，再落回原位。
+strike :: proc(s: ^Demo, m: ^Motion) {
+	sequence_start(s, m)
+	windup := ui.UI_VISUAL_DEFAULT
+	windup.offset = {0, 8}
+	windup.scale = {1.06, 0.92}
+	windup.rotation = 0.05
+	lunge := ui.UI_VISUAL_DEFAULT
+	lunge.offset = {10, -40}
+	lunge.scale = {1.12, 1.12}
+	lunge.rotation = -0.09
+	sequence_step(s, m, m.visual, windup, 0.07)
+	sequence_step(s, m, windup, lunge, 0.07)
+	sequence_step(s, m, lunge, ui.UI_VISUAL_DEFAULT, 0.20)
+}
+
+// 落位：以底边为支点压扁再弹回，让卡牌“放进”槽里。
+land :: proc(s: ^Demo, m: ^Motion) {
+	sequence_start(s, m)
+	squash := ui.UI_VISUAL_DEFAULT
+	squash.scale = {1.08, 0.9}
+	squash.pivot = {0.5, 1}
+	stretch := ui.UI_VISUAL_DEFAULT
+	stretch.scale = {0.98, 1.03}
+	stretch.pivot = {0.5, 1}
+	sequence_step(s, m, m.visual, squash, 0.05)
+	sequence_step(s, m, squash, stretch, 0.08)
+	sequence_step(s, m, stretch, ui.UI_VISUAL_DEFAULT, 0.08)
 }
 
 open_modal :: proc(s: ^Demo) {
@@ -96,47 +121,4 @@ close_modal :: proc(s: ^Demo) {
 	target.scale = {0.96, 0.96}
 	target.opacity = 0
 	move_to(s, &s.modal, target, 0.13)
-}
-
-tile_feedback :: proc(s: ^Demo, index: int, state: ui.UI_Interaction) {
-	m := &s.tiles[index]
-	running := tween.manager_is_handle_valid(s.tweens, m.handle)
-	if !running {
-		m.action = false
-	}
-	if state.clicked {
-		switch index {
-		case 0:
-			rebound(s, m)
-			s.attacks += 1
-		case 1:
-			jump(s)
-		case 2:
-			rebound(s, m)
-			open_modal(s)
-		}
-		return
-	}
-	// 新按压可打断点击动作；普通悬停变化等动作完成后再对齐。
-	if m.action && !state.pressed && !state.disabled {
-		return
-	}
-	target := ui.UI_VISUAL_DEFAULT
-	duration: f32 = 0.10
-	if !state.disabled {
-		if state.active {
-			target.scale = {1.04, 0.93}
-			target.offset = {0, 3}
-			duration = 0.045
-		} else if state.hovered || state.focused {
-			target.offset = {0, -5}
-			target.scale = {1.025, 1.025}
-			target.rotation = index == 1 ? -0.025 : 0.018
-		}
-	}
-	// 比较正在追踪的目标，而不是仅处理 hovered 的单帧边沿。
-	// 动作完成后也重新核对实际姿态，持续悬停不需要再移入一次。
-	if (running && (m.action || m.target != target)) || (!running && m.visual != target) {
-		move_to(s, m, target, duration)
-	}
 }

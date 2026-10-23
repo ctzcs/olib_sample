@@ -1,0 +1,34 @@
+Shader "SunShadow"
+{
+    Label "stylized3d / Instanced sun depth"
+    Preview 3D
+    Output "color"
+    Instanced
+    Properties { _unused ("Unused", Float) = 0 }
+    Pass "shadow"
+    {
+        Draw Model
+        Cull Back
+        Blend Opaque
+        ZTest Less
+        ZWrite On
+        HLSLPROGRAM
+        cbuffer MatrixBlock : register(b0, space1) { float4x4 Wvp; float4x4 World; float4 VertexClock; float4 VertexCamera; };
+        #include "MeadowWind.hlsli"
+        struct Input { OlibInstanceInput Instance; float3 Position : TEXCOORD0; float3 Normal : TEXCOORD1; float2 Uv : TEXCOORD2; float4 Tangent : TEXCOORD3; };
+        struct Output { float4 Position : SV_Position; OlibInstance Instance; };
+        Output vertex_main(Input v) {
+            Output o;
+            float4x4 world = olib_world(v.Instance);
+            float3 position = mul(float4(v.Position, 1), world).xyz;
+            position = meadow_wind(v.Position, position, world[3].xyz, v.Tangent.w, VertexClock.x);
+            o.Position = mul(float4(position, 1), Wvp);
+            o.Instance = olib_instance_from(v.Instance);
+            return o;
+        }
+        // Keep InstanceTint in the stage interface so shadercross preserves the
+        // fixed instance vertex layout. The color attachment doubles as a debug view.
+        float4 fragment_main(Output v) : SV_Target0 { olib_instance = v.Instance; return InstanceTint; }
+        ENDHLSL
+    }
+}

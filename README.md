@@ -87,16 +87,21 @@ run.bat ui_motion shot
 run.bat ui_motion shot scaled narrow
 ```
 
-`ui_motion` is a tile-based motion study inspired by the requested Shogun Showdown feel,
-with original procedural icons: press/release ATTACK for a quick rebound, click RELIC for
-anticipation, a tilted jump and landing squash, or click REWARD for a modal entrance/exit.
-Tab/Enter select and activate; Esc closes the modal. The background stays blocked until
-its exit finishes. Animation timings and poses live in `src/ui_motion/motion.odin`.
-The UI subtree transform uses `kit/ui` and existing `core/tween` sequences; restarting an
-animation cancels its old handle and continues from the current pose.
-`shot`/`smoke` performs clicks, checks state changes, checks quick hover/leave recovery, resizes to 960×800, and saves seven
+`ui_motion` is a drag-and-drop card study inspired by the requested Shogun Showdown feel,
+with original procedural icons. Drag cards from the wooden tray into the three action slots:
+the card follows the pointer 1:1, tilts with its horizontal velocity, lifts with a shadow, and the
+slot under it lights up. Hovering over the tray opens a gap at the insertion point and the neighbours
+slide apart; dropping there reorders the hand (also works for cards coming back from a slot).
+Dropping on an occupied slot swaps cards; dropping elsewhere flies the card
+home on a critically damped spring and lands with a squash. Clicking (or Tab + Enter) toggles a card
+between hand and the first empty slot; Esc cancels a drag. GO plays the queue in slot order, and the
+GATE card opens a modal entrance/exit afterwards. Drag/drop rules and spring physics live in
+`src/ui_motion/cards.odin`; tweened poses live in `src/ui_motion/motion.odin`.
+The sample uses `UnlockedStep` so VSync paces frames — Foster's default fixed 60 Hz step sleeps
+between updates and stutters on high-refresh displays.
+`shot`/`smoke` drags, clicks, swaps, executes the queue, closes the modal, resizes to 960×800 and saves seven
 native-resolution PNGs under `build/ui-motion-*.png`. `scaled narrow` starts at 760×760
-with 125% UI scale; fonts and icons render directly at the final output resolution.
+with 125% UI scale; cards shrink to fit and fonts and icons render directly at the final output resolution.
 The UI font atlas includes all Chinese labels. No game assets are copied.
 
 ```bat
@@ -185,10 +190,20 @@ run.bat stylized3d shot
 ```
 
 - `stylized3d`: a Celeste64-style frame on Render3D — per-view `View.globals` (sun, fog, billboard
-  camera axes), a `ZTest Greater` silhouette for the hero behind a wall, and a depth-edge post effect
-  that samples the scene depth attachment through `material_set_texture`. See
+  camera axes), a `ZTest Greater` silhouette for the hero behind a wall, and ambient-occlusion / depth-edge post effects
+  that sample the scene depth attachment through `material_set_texture`. See
   [src/stylized3d/README.md](src/stylized3d/README.md).
 - `shot` writes the final composite to `library/screenshots/stylized3d.png`; `shot flat` disables the edge pass.
+  Ambient occlusion is enabled by default; press O to toggle it or use `shot noao` for a comparison capture.
+- Move with WASD / arrows, hold Shift to run, Space to jump. Right-drag orbits the follow camera;
+  wheel zooms, R resets, P pauses, E toggles edges. Collision supports walls, steps and platform landings.
+  `shot follow` captures the playable view; `smoke` exercises movement, jumping, camera orbit and resizing.
+- The meadow uses six resident GPU instance batches for grass, flowers, trees and props, with warm dirt paths,
+  faceted crowns and a filtered sun shadow map (L toggles shadows). Occasional travelling gusts bend vegetation
+  in the vertex shader; color and shadow passes share the deformation. `shot follow calm` / `shot follow gust`
+  produce fixed-time wind comparisons without re-uploading static instances.
+- A rippling pond beside the path reflects trees, props, the player and coins through a mirrored camera,
+  reusing those instance buffers. `shot water` captures the pond; add `noreflection` for a comparison.
 
 ## Hot reload: the smallest example
 

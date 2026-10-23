@@ -1,0 +1,90 @@
+Shader "Water"
+{
+    Label "stylized3d / Reflective pond"
+    Preview 3D
+    Output "color"
+    Properties
+    {
+        [Filter(Linear)] _reflection ("Planar reflection", 2D) = ""
+        _deep ("Deep blue", Color) = (0.065,0.17,0.30,1)
+        _shallow ("Shallow blue", Color) = (0.18,0.40,0.48,1)
+    }
+    Pass "water"
+    {
+        Draw Model
+        Cull None
+        Blend Opaque
+        ZTest Less
+        ZWrite On
+        HLSLPROGRAM
+        #include "Stylized.hlsli"
+        float water_hash(float2 p) { return frac(sin(dot(p,float2(127.1,311.7)))*43758.5453); }
+        float water_caustic(float2 p) {
+            float2 cell = floor(p), local = frac(p);
+            float first = 10, second = 10;
+            [unroll] for (int z=-1;z<=1;z++) [unroll] for (int x=-1;x<=1;x++) {
+                float2 offset = float2(x,z);
+                float2 seed = float2(water_hash(cell+offset),water_hash(cell+offset+37.2));
+                float2 delta = offset+0.2+seed*0.6-local;
+                float distance = dot(delta,delta);
+                if (distance<first) { second=first; first=distance; } else { second=min(second,distance); }
+            }
+            return 1-smoothstep(0.025,0.085,second-first);
+        }
+        struct Output { float4 Position : SV_Position; float3 World : TEXCOORD0; float2 Local : TEXCOORD1; };
+        Output vertex_main(MeshInput v) {
+            Output o;
+            o.Position = mul(float4(v.Position,1), Wvp);
+            o.World = mul(float4(v.Position,1), World).xyz;
+            o.Local = v.Position.xz;
+            return o;
+        }
+        float4 fragment_main(Output v) : SV_Target0 {
+            SceneView view = scene_view(FragmentView);
+            // World-anchored texels and an 8 Hz phase retain a pixel-art cadence
+            // as the camera orbits; reflection projection itself stays continuous.
+            float t = floor(Clock.x*8)/8;
+            float angle = atan2(v.Local.y, v.Local.x);
+            float2 squared = v.Local*v.Local;
+            float edge = sqrt(sqrt(dot(squared,squared))) + 0.022*sin(angle*5+0.7) + 0.014*sin(angle*9-0.3);
+            clip(0.98-edge);
+            float2 p = floor(v.World.xz*24+0.5)/24;
+            float a = p.y*6.5+sin(p.x*2.4-t*0.4)*0.6-t*0.75;
+            float b = p.y*13+sin(p.x*4.7+t*0.3)*0.45+t*0.55;
+            float2 slope = float2(cos(a)*0.025,sin(b)*0.018);
+            float3 normal = normalize(float3(-slope.x,1,-slope.y));
+            float3 eye = normalize(CameraPosition.xyz-v.World);
+            float fresnel = pow(1-saturate(dot(normal,eye)),3);
+            float4 position = float4(v.World,1);
+            float4 projected = float4(dot(position,view.reflection_c0),dot(position,view.reflection_c1),dot(position,view.reflection_c2),dot(position,view.reflection_c3));
+            float2 uv = projected.xy / max(projected.w,0.001) * float2(0.5,-0.5) + 0.5;
+            float shore = smoothstep(0.60,0.885,edge);
+            float2 distortion = float2(sin(a)*0.0028,sin(b)*0.0008)*(1-shore*0.8);
+            float inside = step(0.001,projected.w) * step(0,uv.x)*step(uv.x,1)*step(0,uv.y)*step(uv.y,1);
+            float3 color = lerp(_deep.rgb,_shallow.rgb,shore);
+            float reflection_weight = (0.46+fresnel*0.20)*(1-shore*0.52)*inside*view.water_view.z*view.water_view.w;
+            if (reflection_weight > 0) {
+                float3 reflected = _reflection.Sample(_reflectionSampler, clamp(uv+distortion,0.002,0.998)).rgb;
+                color = lerp(color, reflected * float3(0.48,0.72,0.90), reflection_weight);
+            }
+            // Short broken ripple strokes, slow blue caustics, and a few points
+            // of light. The dark body stays dominant beneath these details.
+            float stroke = smoothstep(0.92,0.995,sin(a)) * smoothstep(-0.15,0.55,sin(p.x*6.3+t*0.36));
+            float fine = smoothstep(0.96,0.999,sin(b)) * smoothstep(0.25,0.8,sin(p.x*11.3-t*0.2));
+            float2 caustic_uv = p*3.6+float2(sin(p.y*3.1+t*0.22),cos(p.x*2.7-t*0.17))*0.42+float2(t*0.035,-t*0.045);
+            float caustic = water_caustic(caustic_uv) * smoothstep(-0.3,0.55,sin(p.x*4.2+p.y*2.8+t*0.15));
+            color += float3(0.10,0.24,0.34)*(stroke*0.30+fine*0.18+caustic*0.12)*(1-shore*0.6);
+            float2 spark_cell = floor(p*9);
+            float spark_seed = water_hash(spark_cell);
+            float spark = step(0.992,spark_seed)*pow(saturate(sin(t*1.8+spark_seed*71)),10);
+            color += float3(0.55,0.78,0.87)*spark*0.45*(1-shore);
+            float foam = (1-smoothstep(0.004,0.012,abs(edge-0.878-0.003*sin(t*0.7+angle*8)))) * smoothstep(-0.25,0.6,sin(angle*12+sin(angle*5)));
+            color = lerp(color,float3(0.47,0.70,0.75),foam*0.36);
+            float contact = smoothstep(0.83,0.89,edge);
+            color *= 1-contact*0.20;
+            float fog = smoothstep(view.fog.x,view.fog.y,length(CameraPosition.xyz-v.World))*view.fog.z;
+            return float4(lerp(color,view.fog_color.rgb,fog),1);
+        }
+        ENDHLSL
+    }
+}

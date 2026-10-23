@@ -1,0 +1,91 @@
+// Stable, depth-only screen-space AO at the scene's native pixel resolution.
+// Reconstruct view positions and normals; reject distant geometry and the sky.
+Shader "AmbientOcclusion"
+{
+    Label "stylized3d / Ambient occlusion"
+    Preview 2D
+    Output "color"
+    Properties
+    {
+        _image ("Scene", 2D) = ""
+        [Filter(Nearest)] _depth ("Depth", 2D) = ""
+        _texel ("Texel size", Vector2(0,1)) = (0.0015625,0.00277778)
+        _clip ("Near / far", Vector2(0,1000)) = (0.1,140)
+        _projection ("Tan half FOV x / y", Vector2(0,10)) = (0.885,0.498)
+        _radius ("World radius", Range(0.05,3)) = 0.85
+        _strength ("Strength", Range(0,4)) = 1.65
+        _bias ("Surface bias", Range(0,0.3)) = 0.06
+        _fog ("Fog start / end", Vector2(0,1000)) = (16,75)
+    }
+    Pass "ao"
+    {
+        Label "Ambient occlusion"
+        Draw Sprite
+        SpriteTexture _image
+        Blend Opaque
+        HLSLPROGRAM
+        cbuffer ViewBlock : register(b0, space1) { float4x4 Projection; float4 VertexClock; };
+        struct Input { OlibSpriteInput Sprite; };
+        struct Output { float4 Position : SV_Position; float2 Uv : TEXCOORD0; };
+        Output vertex_main(Input v)
+        {
+            OlibSprite s = olib_sprite(v.Sprite);
+            Output o;
+            o.Position = mul(Projection, float4(s.position, 0, 1));
+            o.Uv = s.uv;
+            return o;
+        }
+        float3 view_position(float2 uv)
+        {
+            float depth = _depth.SampleLevel(_depthSampler, uv, 0).r;
+            float z = _clip.x * _clip.y / max(_clip.y - depth * (_clip.y - _clip.x), 0.00001);
+            return float3((uv * 2 - 1) * float2(_projection.x, -_projection.y) * z, z);
+        }
+        float4 fragment_main(Output v) : SV_Target0
+        {
+            float4 color = _image.Sample(_imageSampler, v.Uv);
+            float3 p = view_position(v.Uv);
+            if (p.z >= _clip.y * 0.99) return color;
+
+            // Choose the neighbour on the same surface at silhouettes instead of
+            // differentiating across the foreground/background depth discontinuity.
+            float3 left = p - view_position(v.Uv - float2(_texel.x, 0));
+            float3 right = view_position(v.Uv + float2(_texel.x, 0)) - p;
+            float3 up = p - view_position(v.Uv - float2(0, _texel.y));
+            float3 down = view_position(v.Uv + float2(0, _texel.y)) - p;
+            float3 dx = abs(left.z) < abs(right.z) ? left : right;
+            float3 dy = abs(up.z) < abs(down.z) ? up : down;
+            float3 n = cross(dx, dy);
+            n *= rsqrt(max(dot(n, n), 0.00000001));
+            if (dot(n, p) > 0) n = -n;
+
+            // Eight fixed directions, four radii: no random noise or temporal shimmer.
+            // Clamp to one scene pixel for close contacts; never clamp samples to
+            // the screen border (that would invent occluders outside the view).
+            float radius_pixels = min(_radius / max(2 * p.z * _projection.y * _texel.y, 0.00001), 48.0);
+            float occlusion = 0;
+            [unroll] for (int direction = 0; direction < 8; ++direction) {
+                float angle = (direction + 0.5) * 0.785398163;
+                float2 ray = float2(cos(angle), sin(angle));
+                float horizon = 0;
+                [unroll] for (int step_index = 1; step_index <= 4; ++step_index) {
+                    float2 offset = round(ray * max(1.0, radius_pixels * step_index * 0.25)) * _texel;
+                    float2 uv = v.Uv + offset;
+                    if (any(uv < _texel * 0.5) || any(uv > 1 - _texel * 0.5)) continue;
+                    float3 delta = view_position(uv) - p;
+                    float distance_squared = dot(delta, delta);
+                    float facing = saturate(dot(n, delta) * rsqrt(max(distance_squared, 0.000001)) - _bias);
+                    float falloff = saturate(1 - distance_squared / (_radius * _radius));
+                    horizon = max(horizon, facing * falloff);
+                }
+                occlusion += horizon;
+            }
+            float fog = smoothstep(_fog.x, _fog.y, length(p));
+            float ao = saturate(occlusion * (_strength / 8)) * (1 - fog);
+            // Cool, restrained contact shading keeps the existing pastel palette.
+            color.rgb *= 1 - ao * float3(0.72, 0.65, 0.50);
+            return color;
+        }
+        ENDHLSL
+    }
+}

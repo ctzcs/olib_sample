@@ -71,4 +71,28 @@
     "allow_concurrent_runs": false,
     "reveal": "always"
   },
+  {
+    "label": "meshView",
+    "command": "cmd.exe",
+    "args": ["/d", "/c", ".\\run.bat", "meshview"],
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "allow_concurrent_runs": false,
+    "reveal": "always"
+  },
+  {
+    "label": "spatial",
+    "command": "cmd.exe",
+    "args": ["/d", "/c", ".\\run.bat", "spatial"],
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "allow_concurrent_runs": false,
+    "reveal": "always"
+  },
+  {
+    "label": "ui-gallery",
+    "command": "cmd.exe",
+    "args": ["/d", "/c", ".\\run.bat", "ui_gallery"],
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "allow_concurrent_runs": false,
+    "reveal": "always"
+  },
 ]

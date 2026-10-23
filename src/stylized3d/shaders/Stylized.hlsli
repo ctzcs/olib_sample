@@ -14,7 +14,34 @@ struct SceneView {
     float4 fog;           // x 起点、y 终点（到相机的距离），z 强度
     float4 camera_right;  // billboard 展开用的相机轴（世界空间）
     float4 camera_up;
+    float4 light_c0, light_c1, light_c2, light_c3;
+    float4 shadow_map; // texel size, bias, strength, enabled
+    float4 reflection_c0, reflection_c1, reflection_c2, reflection_c3;
+    float4 water_view; // water height, reflection clip enabled, main view, reflection enabled
 };
+
+#ifdef STYLIZED_SHADOWS
+float sun_visibility(float3 position, float3 normal, SceneView view)
+{
+    if (view.shadow_map.w < 0.5) return 1;
+    float4 p = float4(position, 1);
+    float4 light = float4(dot(p, view.light_c0), dot(p, view.light_c1), dot(p, view.light_c2), dot(p, view.light_c3));
+    float3 ndc = light.xyz / light.w;
+    float2 uv = ndc.xy * float2(0.5, -0.5) + 0.5;
+    if (any(uv < 0.002) || any(uv > 0.998) || ndc.z <= 0 || ndc.z >= 1) return 1;
+    float bias = view.shadow_map.y * (1 + 2 * (1 - saturate(dot(normal, -view.sun_direction.xyz))));
+    float visible = 0;
+    [unroll] for (int y = -1; y <= 1; ++y) {
+        [unroll] for (int x = -1; x <= 1; ++x) {
+            float depth = _sunDepth.SampleLevel(_sunDepthSampler, uv + float2(x,y) * view.shadow_map.x, 0).r;
+            visible += step(ndc.z - bias, depth);
+        }
+    }
+    // Fade the border of the single local shadow map, rather than popping.
+    float border = min(min(uv.x, uv.y), min(1-uv.x, 1-uv.y));
+    return 1 - (1 - visible / 9) * view.shadow_map.z * smoothstep(0.01, 0.07, border);
+}
+#endif
 cbuffer VertexViewBlock : register(b1, space1) { SceneView VertexView; };
 cbuffer FragmentViewBlock : register(b2, space3) { SceneView FragmentView; };
 
@@ -44,13 +71,17 @@ struct MeshInput {
 float3 stylized_shade(float3 albedo, float3 normal, float3 world_position)
 {
     SceneView view = scene_view(FragmentView);
+    if (view.water_view.y > 0.5) clip(world_position.y - view.water_view.x);
     float3 n = normalize(normal);
     float lit = smoothstep(-0.04, 0.06, dot(n, -view.sun_direction.xyz));
+    #ifdef STYLIZED_SHADOWS
+    lit *= sun_visibility(world_position, n, view);
+    #endif
     float3 bright = albedo * view.sun_color.rgb;
-    float3 dark = lerp(albedo, view.shadow.rgb, view.shadow.a);
+    float3 dark = lerp(albedo * float3(0.64,0.70,0.84), view.shadow.rgb, 0.15);
     float3 color = lerp(dark, bright, lit);
     float3 to_eye = normalize(CameraPosition.xyz - world_position);
-    color += pow(saturate(1 - dot(n, to_eye)), 3) * 0.3 * lit;
+    color += pow(saturate(1 - dot(n, to_eye)), 3) * 0.09 * lit;
     float distance = length(world_position - CameraPosition.xyz);
     float fog = saturate((distance - view.fog.x) / max(view.fog.y - view.fog.x, 0.001));
     fog = fog * fog * (3 - 2 * fog);

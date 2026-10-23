@@ -7,9 +7,9 @@ Shader "Sky"
     Output "color"
     Properties
     {
-        _zenith ("Zenith", Color) = (0.34,0.52,0.88,1)
+        _zenith ("Zenith", Color) = (0.35,0.62,0.73,1)
         // 地平线颜色与 main.odin 的雾色相同，远处地面融进天空。
-        _horizon ("Horizon", Color) = (0.84,0.90,0.98,1)
+        _horizon ("Horizon", Color) = (0.91,0.89,0.73,1)
     }
 
     Pass "sky"

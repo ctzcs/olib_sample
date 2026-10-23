@@ -4,10 +4,13 @@ Shader "Toon"
     Label "stylized3d / Scene"
     Preview 3D
     Output "color"
+    Instanced
     Properties
     {
         _color ("Color", Color) = (1,1,1,1)
-        _checker ("Checker", Range(0,1)) = 0.08
+        _terrain ("Meadow ground", Range(0,1)) = 0
+        _flower ("Flower mesh", Range(0,1)) = 0
+        [Filter(Nearest)] _sunDepth ("Sun shadow", 2D) = ""
     }
 
     Pass "scene"
@@ -19,22 +22,59 @@ Shader "Toon"
         ZTest Less
         ZWrite On
         HLSLPROGRAM
+        #define STYLIZED_SHADOWS
         #include "Stylized.hlsli"
-        struct Output { float4 Position : SV_Position; float3 Normal : TEXCOORD0; float3 World : TEXCOORD1; };
-        Output vertex_main(MeshInput v)
+        #include "MeadowWind.hlsli"
+        struct Input { OlibInstanceInput Instance; float3 Position : TEXCOORD0; float3 Normal : TEXCOORD1; float2 Uv : TEXCOORD2; float4 Tangent : TEXCOORD3; };
+        struct Output { float4 Position : SV_Position; float3 Normal : TEXCOORD0; float3 World : TEXCOORD1; float Palette : TEXCOORD2; OlibInstance Instance; };
+        Output vertex_main(Input v)
         {
             Output o;
-            o.Position = mul(float4(v.Position, 1), Wvp);
-            o.Normal = mul(v.Normal, (float3x3)World);
-            o.World = mul(float4(v.Position, 1), World).xyz;
+            float4x4 world = olib_world(v.Instance);
+            o.World = mul(float4(v.Position, 1), world).xyz;
+            o.World = meadow_wind(v.Position, o.World, world[3].xyz, v.Tangent.w, VertexClock.x);
+            o.Position = mul(float4(o.World, 1), Wvp);
+            // Inverse transpose for the non-uniformly scaled instances.
+            float3 scale2 = float3(dot(world[0].xyz, world[0].xyz), dot(world[1].xyz, world[1].xyz), dot(world[2].xyz, world[2].xyz));
+            o.Normal = mul(v.Normal / max(scale2, 0.00001), (float3x3)world);
+            o.Palette = v.Uv.x;
+            o.Instance = olib_instance_from(v.Instance);
             return o;
+        }
+        float hash21(float2 p) { return frac(sin(dot(p, float2(127.1, 311.7))) * 43758.5453); }
+        float noise2(float2 p) {
+            float2 i = floor(p), f = frac(p); f = f*f*(3-2*f);
+            return lerp(lerp(hash21(i), hash21(i+float2(1,0)), f.x), lerp(hash21(i+float2(0,1)), hash21(i+1), f.x), f.y);
         }
         float4 fragment_main(Output v) : SV_Target0
         {
-            // 世界坐标棋盘格：只铺在朝上的面上，每个 1×1 格交替明暗，不依赖网格 UV。
-            float2 cell = floor(v.World.xz + 0.001);
-            float checker = fmod(abs(cell.x + cell.y), 2.0) * step(0.5, normalize(v.Normal).y);
-            float3 albedo = _color.rgb * Tint.rgb * (1 - _checker * checker);
+            olib_instance = v.Instance;
+            float3 albedo = _color.rgb * InstanceTint.rgb;
+            if (_terrain > 0.5 && normalize(v.Normal).y > 0.5) {
+                float2 p = v.World.xz;
+                float patches = noise2(p * 0.32);
+                albedo *= lerp(0.91, 1.08, smoothstep(0.25, 0.75, patches));
+                // Same center line as meadow_path() in scenery.odin.
+                float center = 2.8 * exp(-pow((p.y - 1) / 3, 2)) + 0.55 * sin(p.y * 0.38);
+                float edge = abs(p.x - center) + (noise2(p*2.1)-0.5)*0.15;
+                float path = 1 - smoothstep(1.08, 1.22, edge);
+                float3 earth = lerp(float3(0.70,0.53,0.32), float3(0.84,0.69,0.46), patches);
+                albedo = lerp(albedo, earth, path);
+                // Actual sloping banks expose warm soil; darker wet soil near water.
+                float bank = smoothstep(0.015,0.16,-v.World.y);
+                float wet = smoothstep(0.22,0.48,-v.World.y);
+                float3 soil = lerp(float3(0.65,0.52,0.30),float3(0.32,0.36,0.25),wet);
+                // Discrete earth strata and a dark waterline give the bank depth.
+                float layer = floor(saturate(-v.World.y/0.45)*3);
+                float fleck = hash21(floor(v.World.xz*13));
+                soil *= 1.03-layer*0.085 + step(0.86,fleck)*0.08;
+                float waterline = 1-smoothstep(0.014,0.052,abs(v.World.y-FragmentView.water_view.x));
+                soil = lerp(soil,float3(0.13,0.22,0.23),waterline*0.60);
+                albedo = lerp(albedo,soil,bank);
+            }
+            if (_flower > 0.5) {
+                albedo = v.Palette < 0.25 ? float3(0.28,0.43,0.17) : (v.Palette < 0.75 ? float3(0.98,0.69,0.22) : albedo);
+            }
             return float4(stylized_shade(albedo, v.Normal, v.World), 1);
         }
         ENDHLSL

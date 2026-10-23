@@ -45,6 +45,7 @@ Shader "Blob"
         {
             olib_instance = v.Instance;
             SceneView view = scene_view(FragmentView);
+            if (view.water_view.y > 0.5) discard;
             float alpha = (1 - smoothstep(1 - _softness, 1, length(v.Uv))) * InstanceTint.a;
             return float4(view.shadow.rgb * 0.55, alpha);
         }
