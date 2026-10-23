@@ -86,6 +86,10 @@ startup :: proc(g: ^foster.App) {
 		output := foster.DrawableTargetFromWindow(&g.Window)
 		foster.TargetInit(&capture, &g.GraphicsDevice, output.WidthInPixels, output.HeightInPixels)
 	}
+	if controls {
+		// 焦点框样式可自定义：这一页外扩 3 像素。
+		theme.focus = {offset = 3}
+	}
 	if shot && controls {
 		// 验收图：文本框正在编辑、下拉框展开。
 		append(&player_name, "Player One")
@@ -384,7 +388,7 @@ stash_slot :: proc(index: int) {
 		layout = {sizing = {width = clay.SizingFixed(72), height = clay.SizingFixed(72)},
 			childAlignment = {x = .Center, y = .Center}},
 		backgroundColor = ui.ui_clay_color(bg),
-		border = {color = ui.ui_clay_color(hovered || state.focused ? theme.accent : theme.panel_border),
+		border = {color = ui.ui_clay_color(hovered ? theme.accent : theme.panel_border),
 			width = {left = 1, right = 1, top = 1, bottom = 1}},
 		cornerRadius = clay.CornerRadiusAll(theme.corner_radius),
 	}) {
