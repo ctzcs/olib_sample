@@ -55,9 +55,14 @@ bounds 按最大环绕半径外扩，否则运动出盒的部分会被剔除。
 ## 截图与计时
 
 加 `shot` 固定动画时间，预热 10 帧、统计 120 帧，保存最终合成图到 library/screenshots 后退出：
-material3d.png、material3d_views.png、material3d_models.png 或 material3d_swarm.png。
-输出模型 Draw 数、按所有 Pass 累计的实例数、整个 render 的 CPU 时间和仅 Render3D submit 的 CPU 时间。
+material3d.png、material3d_views.png、material3d_objects.png、material3d_models.png 或 material3d_swarm.png。
+输出模型 Draw 数、按所有 Pass 累计的实例数、整个 render 的 CPU 时间、仅 Render3D submit 的 CPU 时间，
+以及记录调用（r3d.model / models / buffer）的 CPU 时间、调用次数和平均每次、每个 Draw 的 submit 时间。
 `immediate` 关闭垂直同步和固定步长；帧时间仍不等于 GPU 时间，当前没有 GPU 时间戳测量。
+
+记录开销基准：`objects=N` 用左侧材质（非实例化，body + outline 两个 Pass）记录 N 个小球，
+每个记录每个 Pass 一个 Draw；`models each count=N` 让实例化材质每个实例单独调用 `r3d.model`，
+衡量逐次记录的固定开销（画面与 `models` 相同）。例如 `run.bat material3d objects=142 shot`。
 
 2026-10-20 本机 D3D12、1100×720、4x MSAA，tools/check 默认构建的验收结果（毫秒，非性能保证）：
 

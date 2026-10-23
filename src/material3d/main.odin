@@ -28,8 +28,8 @@ State :: struct {
 	target, inset: foster.Target,
 	renderer: r3d.Render3D,
 	views, automatic: bool,
-	submit_sum: f64,
-	measured_frames, draw_calls, submitted_instances: int,
+	submit_sum, record_sum: f64, // shot 模式下 r3d.submit 与记录调用的 CPU 耗时之和（秒）
+	measured_frames, draw_calls, submitted_instances, records: int,
 	batch: r2d.Render2D,
 	camera: world.Camera3D,
 	// 轨道相机：左键拖动旋转，右键/中键拖动平移，滚轮缩放，F 复位；切换 swarm 时按场景尺度复位。
@@ -51,7 +51,9 @@ State :: struct {
 	cpu_sum: f64, // shot 模式下 render 过程的 CPU 耗时之和（秒）
 	// 性能对比参数：immediate 不限帧并关闭垂直同步（帧时间仍不是 GPU 时间）；back 把远处实例排在前面（最差情况）；
 	// rings= / segments= 球体精度；samples=1|2|4 MSAA。
-	immediate, back: bool,
+	// 记录开销基准：objects=N 用左侧材质（非实例化）记录 N 个球；each 让 models 模式每个实例单独调用 r3d.model。
+	immediate, back, each: bool,
+	objects: int,
 	rings, segments: int,
 	samples: foster.SampleCount,
 	perf: perf.Overlay, // olib 悬浮性能面板，P 切换；只画到窗口，不进 shot 截图
@@ -79,6 +81,10 @@ main :: proc() {
 		case arg == "shot": s.shot = true
 		case arg == "immediate": s.immediate = true
 		case arg == "back": s.back = true
+		case arg == "each": s.each = true
+		case len(arg) > 8 && arg[:8] == "objects=":
+			value, ok := strconv.parse_int(arg[8:])
+			if ok && value > 0 do s.objects = value
 		case len(arg) > 6 && arg[:6] == "rings=":
 			value, ok := strconv.parse_int(arg[6:])
 			if ok && value > 0 do s.rings = value
@@ -254,9 +260,19 @@ render :: proc(app: ^foster.App) {
 	r3d.clear(&s.renderer)
 	s.draw_calls = 0
 	s.submitted_instances = 0
+	record_start := time.tick_now()
 	if s.swarm_on {
 		error: mat.Draw_Error
-		if s.automatic {
+		if s.automatic && s.each {
+			// 基准：每个实例单独调用 model，统计逐次记录的固定开销；画面与 model + models 相同。
+			slots := mat.instance_slot_count(s.swarm.material)
+			for item, i in s.swarm.items {
+				values := mat.instance_values_from(s.swarm.values[i*slots:(i+1)*slots])
+				error = r3d.model(&s.renderer, &s.swarm.mesh, s.swarm.material, item.world, &s.swarm.local_bounds, &values)
+				if error != .None do break
+			}
+			s.records = len(s.swarm.items)
+		} else if s.automatic {
 			// model 与 models 共用同一 instanced 材质，也会合成一批。
 			// 平铺数组每个实例连续 slots 个 float4（hue、motion）；首个实例单独用 model 记录。
 			slots := mat.instance_slot_count(s.swarm.material)
@@ -267,6 +283,7 @@ render :: proc(app: ^foster.App) {
 				error = r3d.models(&s.renderer, &s.swarm.mesh, s.swarm.material,
 					s.swarm.items[1:], &s.swarm.local_bounds, s.swarm.values[slots:])
 			}
+			s.records = 2
 		} else {
 			error = r3d.buffer(&s.renderer, &s.swarm.mesh, s.swarm.material,
 				&s.swarm.instances, s.swarm.count, &s.swarm.bounds)
@@ -275,6 +292,21 @@ render :: proc(app: ^foster.App) {
 			fail(app, mat.draw_error_text(error))
 			return
 		}
+	} else if s.objects > 0 {
+		// 基准：N 个小球共用左侧材质（非实例化，body + outline 两个 Pass），排成正方形网格，全部在视野内。
+		bounds := dasset.Dasset_Bounds{min = {-1.1, -1.1, -1.1}, max = {1.1, 1.1, 1.1}}
+		side := int(math.ceil(math.sqrt(f32(s.objects))))
+		spacing := 5 / f32(side)
+		scale := world.matrix4_scaling(spacing*0.43, spacing*0.43, spacing*0.43)
+		for i in 0..<s.objects {
+			x, y := f32(i % side) - f32(side-1)/2, f32(i / side) - f32(side-1)/2
+			transform := world.matrix4_multiply(scale, world.matrix4_translation(x*spacing, y*spacing, 0))
+			if error := r3d.model(&s.renderer, &s.mesh, s.materials_shown[0], transform, &bounds); error != .None {
+				fail(app, mat.draw_error_text(error))
+				return
+			}
+		}
+		s.records = s.objects
 	} else {
 		bounds := dasset.Dasset_Bounds{min = {-1.1, -1.1, -1.1}, max = {1.1, 1.1, 1.1}} // 含描边扩张
 		for material, i in s.materials_shown {
@@ -284,7 +316,9 @@ render :: proc(app: ^foster.App) {
 				return
 			}
 		}
+		s.records = len(s.materials_shown)
 	}
+	if s.shot && s.frame >= 10 do s.record_sum += time.duration_seconds(time.tick_diff(record_start, time.tick_now()))
 	if s.views && !s.swarm_on {
 		r3d.grid(&s.renderer, 4, 1, {0.6, 0.7, 0.8, 0.4})
 		if s.inset.Width != w/3 || s.inset.Height != h/3 {
@@ -333,6 +367,9 @@ render :: proc(app: ^foster.App) {
 			n := f64(s.measured_frames)
 			fmt.printf("Model draws: %d, submitted instances (all passes): %d; frame %.3f ms, render CPU %.3f ms, submit CPU %.3f ms (%d frames); GPU not measured\n",
 				s.draw_calls, s.submitted_instances, s.delta_sum*1000/n, s.cpu_sum*1000/n, s.submit_sum*1000/n, s.measured_frames)
+			fmt.printf("Record CPU %.3f ms (%d calls, %.2f us/call); submit %.2f us/draw\n",
+				s.record_sum*1000/n, s.records, s.record_sum*1e6/n/f64(max(1, s.records)),
+				s.submit_sum*1e6/n/f64(max(1, s.draw_calls)))
 			save_capture(s)
 			foster.Exit(app)
 		}
@@ -368,7 +405,7 @@ save_capture :: proc(s: ^State) {
 	for &pixel, i in image.Pixels do pixel = {bytes[i*4], bytes[i*4+1], bytes[i*4+2], bytes[i*4+3]}
 	directory :: #directory + "../../library/screenshots"
 	_ = os.make_directory_all(directory)
-	name := s.automatic ? "material3d_models.png" : s.swarm_on ? "material3d_swarm.png" : s.views ? "material3d_views.png" : "material3d.png"
+	name := s.automatic ? "material3d_models.png" : s.swarm_on ? "material3d_swarm.png" : s.objects > 0 ? "material3d_objects.png" : s.views ? "material3d_views.png" : "material3d.png"
 	fmt.println(name, foster.ImageWritePng(&image, fmt.tprintf("%s/%s", directory, name)))
 }
 
