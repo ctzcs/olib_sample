@@ -3,7 +3,33 @@ package main
 import tween "olib:core/tween"
 import ui "olib:kit/ui"
 
-// 分区：动画状态 / 可打断补间 / 卡牌动作和弹窗编排
+// 分区：手感参数 / 时间轴补间 / 卡牌动作编排
+//
+// 四层用法在本示例中各有一处：
+//   原语        —— 槽位悬停放大 ui_motion、卡牌回弹 ui_motion_kick、奖励弹窗 ui_presence
+//   自算 Visual —— 卡牌拖动跟手、倾斜与抬起（cards.odin 的 card_step / card_visual）
+//   时间轴      —— 出招、跳跃、落位（本文件的 Sequence）
+//   非变换数值  —— 槽位描边颜色、托盘卡座宽度（view.odin 的 approach）
+
+// ==============================================================================
+// 手感参数 —— 全部集中在这里，改完重跑或热重载即可比较
+// ==============================================================================
+
+MOTION_SLOT :: ui.UI_Motion{time = 0.22, bounce = 0.35}
+MOTION_POP :: ui.UI_Motion{time = 0.3, bounce = 0.4}
+MODAL_ENTER :: ui.UI_Motion{time = 0.4, bounce = 0.25}
+MODAL_EXIT :: ui.UI_Motion{time = 0.15}
+
+SLOT_HOVER :: ui.UI_Visual{scale = {1.06, 1.06}, pivot = {0.5, 0.5}, opacity = 1}
+// 回弹冲击：放大并轻微左倾，弹簧带着一点过冲回到原样。
+POP_KICK :: ui.UI_Visual{scale = {6, 6}, rotation = -2.4}
+// 弹窗入场从下方小一圈、略倾斜处浮起；退场只轻轻下沉淡出，不沿原路倒放。
+MODAL_HIDDEN_IN :: ui.UI_Visual{offset = {0, 32}, scale = {0.86, 0.86}, rotation = -0.035, pivot = {0.5, 0.5}}
+MODAL_HIDDEN_OUT :: ui.UI_Visual{offset = {0, 16}, scale = {0.96, 0.96}, pivot = {0.5, 0.5}}
+
+// ==============================================================================
+// 时间轴补间
+// ==============================================================================
 
 Motion :: struct {
 	visual: ui.UI_Visual,
@@ -12,14 +38,6 @@ Motion :: struct {
 }
 
 // 状态位于地址稳定的 Demo 内；重播先取消旧句柄，从当前值接续。
-move_to :: proc(s: ^Demo, motion: ^Motion, target: ui.UI_Visual, duration: f32) {
-	tween.manager_kill(&s.tweens, motion.handle)
-	motion.target = target
-	motion.handle = tween.manager_add_tween_to(&s.tweens,
-		tween.make_ex(motion.visual, target, 0,
-			{duration = duration, transition = .EaseOut}, ui.ui_visual_lerp), &motion.visual)
-}
-
 sequence_start :: proc(s: ^Demo, motion: ^Motion) -> tween.Tween_Handle {
 	tween.manager_kill(&s.tweens, motion.handle)
 	motion.handle = tween.manager_add_sequence(&s.tweens)
@@ -33,18 +51,9 @@ sequence_step :: proc(s: ^Demo, motion: ^Motion, from, to: ui.UI_Visual, duratio
 	assert(ok)
 }
 
-// 数值集中在这里：轻微倾斜、短促过冲，一次动作在半秒内收稳。
-rebound :: proc(s: ^Demo, motion: ^Motion) {
-	sequence_start(s, motion)
-	peak := ui.UI_VISUAL_DEFAULT
-	peak.scale = {1.10, 1.10}
-	peak.rotation = -0.045
-	settle := ui.UI_VISUAL_DEFAULT
-	settle.scale = {0.985, 0.985}
-	sequence_step(s, motion, motion.visual, peak, 0.085)
-	sequence_step(s, motion, peak, settle, 0.10)
-	sequence_step(s, motion, settle, ui.UI_VISUAL_DEFAULT, 0.085)
-}
+// ==============================================================================
+// 卡牌动作编排
+// ==============================================================================
 
 jump :: proc(s: ^Demo, m: ^Motion) {
 	sequence_start(s, m)
@@ -93,32 +102,4 @@ land :: proc(s: ^Demo, m: ^Motion) {
 	sequence_step(s, m, m.visual, squash, 0.05)
 	sequence_step(s, m, squash, stretch, 0.08)
 	sequence_step(s, m, stretch, ui.UI_VISUAL_DEFAULT, 0.08)
-}
-
-open_modal :: proc(s: ^Demo) {
-	if s.modal_open && !s.modal_closing do return
-	if !s.modal_open {
-		s.modal.visual = ui.UI_VISUAL_DEFAULT
-		s.modal.visual.scale = {0.86, 0.86}
-		s.modal.visual.offset = {0, 32}
-		s.modal.visual.rotation = -0.035
-		s.modal.visual.opacity = 0
-	}
-	s.modal_open = true
-	s.modal_closing = false
-	sequence_start(s, &s.modal)
-	peak := ui.UI_VISUAL_DEFAULT
-	peak.scale = {1.025, 1.025}
-	sequence_step(s, &s.modal, s.modal.visual, peak, 0.18)
-	sequence_step(s, &s.modal, peak, ui.UI_VISUAL_DEFAULT, 0.10)
-}
-
-close_modal :: proc(s: ^Demo) {
-	if !s.modal_open || s.modal_closing do return
-	s.modal_closing = true
-	target := ui.UI_VISUAL_DEFAULT
-	target.offset = {0, 16}
-	target.scale = {0.96, 0.96}
-	target.opacity = 0
-	move_to(s, &s.modal, target, 0.13)
 }

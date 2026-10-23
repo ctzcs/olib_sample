@@ -107,7 +107,7 @@ toggle :: proc(s: ^Demo, index: int) {
 		}
 	}
 	// 槽满时轻轻摇一下，表示没有位置。
-	rebound(s, &s.cards[index].motion)
+	pop(s, index)
 }
 
 drop :: proc(s: ^Demo, index: int) {
@@ -237,6 +237,11 @@ card_visual :: proc(card: Card) -> ui.UI_Visual {
 	return v
 }
 
+// 冲击打在卡牌内层：外层的拖动、倾斜和 Sequence 姿态照常，父子变换自动叠加。
+pop :: proc(s: ^Demo, index: int) {
+	ui.ui_motion_kick(&s.ctx, POP_IDS[index], POP_KICK)
+}
+
 // ==============================================================================
 // 执行队列 —— 按槽位顺序出招，结束后全部回手
 // ==============================================================================
@@ -276,7 +281,7 @@ play_step :: proc(s: ^Demo, dt: f32) {
 		}
 	}
 	if s.gate_opened {
-		open_modal(s)
+		s.modal_open = true
 	}
 }
 
@@ -293,7 +298,7 @@ perform :: proc(s: ^Demo, index: int) {
 		strike(s, &card.motion)
 		s.gate_opened = true
 	case .Guard:
-		rebound(s, &card.motion)
+		pop(s, index)
 		s.guards += 1
 	}
 }

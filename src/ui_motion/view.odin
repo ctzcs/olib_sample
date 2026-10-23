@@ -26,6 +26,8 @@ HAND_IDS := [CARD_COUNT]string{"hand-0", "hand-1", "hand-2", "hand-3"}
 @(rodata)
 CARD_IDS := [CARD_COUNT]string{"card-0", "card-1", "card-2", "card-3"}
 @(rodata)
+POP_IDS := [CARD_COUNT]string{"pop-0", "pop-1", "pop-2", "pop-3"}
+@(rodata)
 SHADOW_IDS := [CARD_COUNT]string{"shadow-0", "shadow-1", "shadow-2", "shadow-3"}
 
 // ==============================================================================
@@ -61,10 +63,7 @@ declare_ui :: proc(s: ^Demo) {
 			card(s, i)
 		}
 	}
-	// 以本帧已设置的模态 ID 声明，避免打开同帧显示与输入隔离错位。
-	if s.ctx.modal_id != 0 {
-		modal(s)
-	}
+	modal(s)
 }
 
 grow :: proc() {
@@ -105,9 +104,7 @@ slot_socket :: proc(s: ^Demo, slot: int, k: f32) {
 	target: f32 = s.drag.card >= 0 && s.drag.moved && s.drag.hover_slot == slot ? 1 : 0
 	s.slot_glow[slot] = tween.approach(s.slot_glow[slot], target, 20, s.dt)
 	glow := s.slot_glow[slot]
-	visual := ui.UI_VISUAL_DEFAULT
-	visual.scale = 1 + 0.06 * glow
-	ui.ui_set_visual(&s.ctx, id, visual)
+	ui.ui_motion(&s.ctx, id, target > 0 ? SLOT_HOVER : ui.UI_VISUAL_DEFAULT, MOTION_SLOT)
 	border := lerp_color(FRAME, GOLD, glow)
 	if s.playing && s.play_slot - 1 == slot && s.play_timer > 0 {
 		border = GOLD
@@ -276,7 +273,9 @@ card :: proc(s: ^Demo, index: int) {
 	side.id = clay.ID(id)
 	side.layout.sizing = {width = clay.SizingFixed(s.card_size.x), height = clay.SizingFixed(s.card_size.y)}
 	side.floating = {attachTo = .Root, offset = {c.pos.x, c.pos.y}, zIndex = z, pointerCaptureMode = .Capture}
+	ui.ui_motion(&s.ctx, POP_IDS[index], ui.UI_VISUAL_DEFAULT, MOTION_POP)
 	outer := frame_outer(border, {2, 2, 2, 2}, 12 * k)
+	outer.id = clay.ID(POP_IDS[index])
 	inner := frame_inner(colors[c.kind], 10 * k)
 	inner.layout.layoutDirection = .TopToBottom
 	// 外框内边距会占布局（Clay 描边不占），内容收紧，避免溢出盖住底边。
@@ -293,16 +292,19 @@ card :: proc(s: ^Demo, index: int) {
 }
 
 // ==============================================================================
-// 模态窗口 —— 退场完成前继续声明并阻挡背景输入
+// 模态窗口 —— ui_presence 管进出场；退场中继续显示但不再接受输入
 // ==============================================================================
 
 modal :: proc(s: ^Demo) {
+	alive, t := ui.ui_presence(&s.ctx, "reward-modal", s.modal_open, MODAL_ENTER, MODAL_EXIT)
+	if !alive do return
 	ui.ui_set_scope(&s.ctx, "reward-modal")
 	defer ui.ui_set_scope(&s.ctx, "")
 	decl := ui.ui_modal_decl(&s.ctx, "reward-modal")
-	decl.backgroundColor = {0.04, 0.04, 0.05, 0.84 * s.modal.visual.opacity}
+	decl.backgroundColor = {0.04, 0.04, 0.05, 0.84 * clamp(t, 0, 1)}
 	if clay.UI()(decl) {
-		ui.ui_set_visual(&s.ctx, "reward-panel", s.modal.visual)
+		hidden := s.modal_open ? MODAL_HIDDEN_IN : MODAL_HIDDEN_OUT
+		ui.ui_set_visual(&s.ctx, "reward-panel", ui.ui_visual_lerp(hidden, ui.UI_VISUAL_DEFAULT, t))
 		side := frame_side(GOLD, 5, 16)
 		side.id = clay.ID("reward-panel")
 		outer := frame_outer(GOLD, {2, 2, 2, 2}, 16)
@@ -317,8 +319,8 @@ modal :: proc(s: ^Demo) {
 			ui.ui_image(&s.ctx, foster.SubtextureMake(&s.icons, {96, 0, 96, 96}, {0, 0, 96, 96}), 96, 96)
 			ui.ui_heading(&s.ctx, &s.theme, "获得新的力量")
 			ui.ui_label_ex(&s.ctx, &s.theme, "Ready for the next encounter.", MUTED, 16)
-			if ui.ui_button(&s.ctx, &s.theme, "close", "CONTINUE / 继续", {disabled = s.modal_closing}) {
-				close_modal(s)
+			if ui.ui_button(&s.ctx, &s.theme, "close", "CONTINUE / 继续") {
+				s.modal_open = false
 			}
 		}
 	}

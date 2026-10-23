@@ -96,10 +96,14 @@ Dropping on an occupied slot swaps cards; dropping elsewhere flies the card
 home on a critically damped spring and lands with a squash. Clicking (or Tab + Enter) toggles a card
 between hand and the first empty slot; Esc cancels a drag. GO plays the queue in slot order, and the
 GATE card opens a modal entrance/exit afterwards. Drag/drop rules and spring physics live in
-`src/ui_motion/cards.odin`; tweened poses live in `src/ui_motion/motion.odin`.
+`src/ui_motion/cards.odin`; tweened poses and all motion parameters live in `src/ui_motion/motion.odin`.
+The sample shows the four motion layers of kit/ui together: state-driven primitives (`ui_motion` for slot
+hover, `ui_motion_kick` for the "no room" / GUARD pop on the card's inner frame, `ui_presence` for the reward
+modal, which ignores input while it exits), hand-computed visuals (drag follow, tilt, lift), Tween sequences
+(strike, jump, landing squash) and non-transform values (slot border colour, tray socket widths).
 The sample uses `UnlockedStep` so VSync paces frames — Foster's default fixed 60 Hz step sleeps
 between updates and stutters on high-refresh displays.
-`shot`/`smoke` drags, clicks, swaps, executes the queue, closes the modal, resizes to 960×800 and saves seven
+`shot`/`smoke` drags, clicks, swaps, executes the queue, closes the modal, resizes to 960×800 and saves nine
 native-resolution PNGs under `build/ui-motion-*.png`. `scaled narrow` starts at 760×760
 with 125% UI scale; cards shrink to fit and fonts and icons render directly at the final output resolution.
 The UI font atlas includes all Chinese labels. No game assets are copied.

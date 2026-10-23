@@ -38,8 +38,7 @@ Demo :: struct {
 	playing, gate_opened: bool,
 	play_slot: int,
 	play_timer: f32,
-	modal: Motion,
-	modal_open, modal_closing: bool,
+	modal_open: bool,
 	attacks, rewards, guards, frame: int,
 	shot, scaled, failed: bool,
 	script_from, script_to: foster.Vec2,
@@ -107,7 +106,6 @@ startup :: proc(g: ^foster.App) {
 	s.theme.heading_font_size = 30
 	s.tweens = tween.manager_make()
 	cards_init(s)
-	s.modal.visual = ui.UI_VISUAL_DEFAULT
 	s.materials = {device = &g.GraphicsDevice}
 	if reason := r2d.init(&s.batch, &s.materials); reason != "" {
 		fmt.eprintln(reason)
@@ -138,12 +136,8 @@ update :: proc(g: ^foster.App) {
 	s.dt = s.shot ? 1.0 / 60 : min(g.Time.Delta, 0.1)
 	tween.manager_update(&s.tweens, s.dt)
 	play_step(s, s.dt)
-	if s.modal_closing && !tween.manager_is_handle_valid(s.tweens, s.modal.handle) {
-		s.modal_open = false
-		s.modal_closing = false
-	}
 	if foster.KeyboardPressed(&g.Input.State.Keyboard, .Escape) {
-		close_modal(s)
+		s.modal_open = false
 	}
 	if s.shot && s.frame == 248 {
 		foster.SetWindowSize(&g.Window, {960, 800})
@@ -192,7 +186,7 @@ render :: proc(g: ^foster.App) {
 		r2d.submit(&s.batch, {target = final})
 		assert(s.ctx.error_count == 0 && !s.ctx.pool_overflow, "UI diagnostics")
 		switch s.frame {
-		case 3, 15, 30, 97, 160, 215, 330, 370:
+		case 3, 15, 30, 97, 160, 215, 223, 330, 370:
 			save_frame(s)
 		case 372:
 			assert(s.slots == {-1, -1, 3} && s.rewards == 1 && !s.modal_open, "drag, swap, execute and resize")
