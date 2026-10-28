@@ -209,6 +209,37 @@ run.bat stylized3d shot
 - A rippling pond beside the path reflects trees, props, the player and coins through a mirrored camera,
   reusing those instance buffers. `shot water` captures the pond; add `noreflection` for a comparison.
 
+## Net Arena: a small multiplayer game on onet
+
+```bat
+run.bat net_arena
+run.bat net_arena host 7777 bots 3
+run.bat net_arena server 7777 bots 2
+run.bat net_arena client 192.168.1.20 7777
+```
+
+- `net_arena`: top-down coin scramble on `olib:thirdparty/onet`. Move with WASD / arrows, Space dashes;
+  dashing into a rival knocks up to three of their coins loose. Rounds last 60 s, then show the winner.
+- With no arguments it opens a start menu: **Host a game** (port, bot count, and the LAN address friends should
+  type) or **Join a game** (host address and port). Esc in a match returns to the menu; a failed connection or a
+  lost host also returns there with the reason.
+- Command-line modes skip the menu: `host` serves on the port and joins as a local player; `server` is a dedicated
+  server whose window spectates the authoritative world; `client` joins an address. `bots <n>` adds server-side AI players.
+- The server is authoritative and replicates `Player` / `Coin` / `Match` components. Player movement runs in an
+  onet `Simulation_World` (`predict.odin`): input is direction bits plus a dash counter, the server steps every
+  player and the client predicts only its own, so local input shows up on the next frame; authority snapshots
+  roll back and replay when they disagree. Position, velocity and dash/hit timers live only in the simulation
+  state (not also as object members); slot and score are ordinary replicated members. Collisions, pickups and
+  knocks stay server-side, so bumps cause small corrections. Remote players, trails, particles and score popups
+  are smoothed or drawn locally. Despawned coins are reclaimed once every client has acknowledged them.
+- `lag <ms>` delays this process's outgoing packets through `session.set_network_conditions`, on either backend
+  (use it on both ends, e.g. `server 7777 lag 80` + `client 127.0.0.1 7777 lag 80` for ~210 ms RTT); the HUD
+  then shows ping, prediction lead and the correction count. `udp` switches to onet's native UDP backend.
+  A dedicated `server` prints its object count every 30 s.
+- `shot` runs for a few seconds, writes `library/screenshots/net_arena_<mode>.png` and exits
+  (on the menu: `net_arena_menu_host.png`, or `menu_join` with `join`).
+  `-define:NET_ARENA_ROUND=<seconds>` shortens rounds for testing the results screen.
+
 ## Hot reload: the smallest example
 
 ```bat
