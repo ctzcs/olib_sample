@@ -8,6 +8,8 @@ import "core:os"
 import "core:slice"
 
 import foster "olib:foster"
+import r2d "olib:kit/rendering/2d"
+import mat "olib:kit/rendering/material"
 import "olib:thirdparty/onet/objects"
 import nr "olib:thirdparty/onet/runtime"
 
@@ -48,7 +50,8 @@ Popup :: struct {
 }
 
 View :: struct {
-	batcher:     foster.Batcher,
+	materials:   mat.Material_Library, // Render2D 借用；默认精灵材质够用，不登记自定义 Shader
+	ui:          r2d.Render2D,
 	font_source: foster.Font,
 	font:        foster.SpriteFont,
 	font_big:    foster.SpriteFont,
@@ -88,7 +91,7 @@ SLOT_COLORS := [MAX_PLAYERS]foster.Color {
 	{255, 146, 43, 255},
 }
 
-// Batcher 默认预乘混合，透明色要把 RGB 一起乘上 alpha。
+// 默认材质为预乘混合，透明色要把 RGB 一起乘上 alpha。
 fade :: proc(c: foster.Color, alpha: f32) -> foster.Color {
 	t := clamp(alpha, 0, 1)
 	return {u8(f32(c.R) * t), u8(f32(c.G) * t), u8(f32(c.B) * t), u8(f32(c.A) * t)}
@@ -104,7 +107,10 @@ slot_color :: proc(slot: i32) -> foster.Color {
 }
 
 view_init :: proc(v: ^View, app: ^foster.App) {
-	foster.BatcherInit(&v.batcher, &app.GraphicsDevice, "NetArena")
+	v.materials = {device = &app.GraphicsDevice}
+	if reason := r2d.init(&v.ui, &v.materials); reason != "" {
+		fmt.eprintln("net_arena:", reason)
+	}
 	for path in ([]string{"C:/Windows/Fonts/segoeuib.ttf", "C:/Windows/Fonts/segoeui.ttf",
 		"/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", "/System/Library/Fonts/Supplemental/Arial Bold.ttf"}) {
 		if !os.exists(path) do continue
@@ -122,7 +128,8 @@ view_destroy :: proc(v: ^View) {
 		foster.SpriteFontDispose(&v.font)
 		foster.FontDispose(&v.font_source)
 	}
-	foster.BatcherDispose(&v.batcher)
+	r2d.dispose(&v.ui)
+	mat.material_library_dispose(&v.materials)
 	delete(v.players)
 	delete(v.coins)
 	delete(v.particles)
@@ -255,10 +262,9 @@ view_update :: proc(a: ^App, dt: f32) {
 
 view_render :: proc(a: ^App, app: ^foster.App, target: foster.DrawableTarget) {
 	v := &a.view
-	b := &v.batcher
+	b := &v.ui
 	w, h := f32(target.WidthInPixels), f32(target.HeightInPixels)
 	foster.GraphicsDeviceClear(&app.GraphicsDevice, target, BG)
-	foster.BatcherClear(b)
 
 	ui := clamp(min(w / 1280, h / 800), 0.6, 3)
 	top, bottom, pad := 92 * ui, 46 * ui, 28 * ui
@@ -267,22 +273,22 @@ view_render :: proc(a: ^App, app: ^foster.App, target: foster.DrawableTarget) {
 	if v.shake > 0 {
 		origin += [2]f32{math.sin(v.time * 93), math.cos(v.time * 71)} * v.shake * v.shake * 7 * ui
 	}
-	foster.BatcherCircle(b, foster.Vec2{w / 2, h * 0.45}, max(w, h) * 0.75, 64, BG_GLOW, BG)
+	r2d.circle_gradient(b, foster.Vec2{w / 2, h * 0.45}, max(w, h) * 0.75, 64, BG_GLOW, BG)
 	v.origin, v.scale = origin, scale
 
 	reg := view_registry(a)
 	local_id := local_player(a)
 	match := find_match(reg)
 
-	foster.BatcherPushMatrix(b, origin, foster.Vec2{scale, scale}, 0)
+	r2d.push_matrix_trs(b, origin, foster.Vec2{scale, scale}, 0)
 	draw_arena(v, match)
 	draw_coins(v)
 	for &p in v.particles {
 		t := p.life / p.max_life
-		foster.BatcherCircle(b, p.pos, p.size * (0.4 + 0.6 * t), 8, fade(p.color, t))
+		r2d.circle(b, p.pos, p.size * (0.4 + 0.6 * t), 8, fade(p.color, t))
 	}
 	draw_players(v, reg, local_id)
-	foster.BatcherPopMatrix(b)
+	r2d.pop_matrix(b)
 
 	// 世界空间文字换算到屏幕坐标、按最终像素字号绘制，避免小字号栅格被缩放。
 	draw_labels(v, reg, local_id)
@@ -296,7 +302,9 @@ view_render :: proc(a: ^App, app: ^foster.App, target: foster.DrawableTarget) {
 	}
 
 	draw_hud(a, v, match, local_id, w, h, ui, origin, scale)
-	foster.BatcherRender(b, target)
+	if err := r2d.submit(b, {target = target, time = v.time}); err != .None {
+		fmt.eprintln("net_arena:", mat.draw_error_text(err))
+	}
 }
 
 to_screen :: proc(v: ^View, p: [2]f32) -> [2]f32 {
@@ -313,14 +321,14 @@ push_local :: proc(v: ^View, pos, scale: [2]f32, rotation: f32) {
 		0, 0, 1, 0,
 		at.x, at.y, 0, 1,
 	}
-	foster.BatcherPushMatrix(&v.batcher, m, false)
+	r2d.push_matrix_raw(&v.ui, m, false)
 }
 
 text :: proc(v: ^View, s: string, pos: [2]f32, size: f32, color: foster.Color, align: f32 = 0) {
 	if !v.has_font do return
 	font := size > 34 ? &v.font_big : &v.font
 	x := pos.x - foster.SpriteFontWidthOf(font, s, size) * align
-	foster.BatcherText(&v.batcher, font, s, foster.Vec2{x, pos.y}, size, color)
+	r2d.text(&v.ui, font, s, foster.Vec2{x, pos.y}, color, size)
 }
 
 text_width :: proc(v: ^View, s: string, size: f32) -> f32 {
@@ -329,7 +337,7 @@ text_width :: proc(v: ^View, s: string, size: f32) -> f32 {
 }
 
 draw_arena :: proc(v: ^View, match: ^Match) {
-	b := &v.batcher
+	b := &v.ui
 	r := foster.Rect{0, 0, ARENA.x, ARENA.y}
 	edge := NEON
 	if match != nil && Phase(match.phase) == .Playing && match.time_left < 10 {
@@ -337,24 +345,24 @@ draw_arena :: proc(v: ^View, match: ^Match) {
 	}
 	for i in 0 ..< 5 {
 		g := f32(5 - i) * 7
-		foster.BatcherRectRounded(b, foster.Rect{-g, -g, ARENA.x + g * 2, ARENA.y + g * 2}, 22 + g, fade(edge, 0.035))
+		round_rect(b, foster.Rect{-g, -g, ARENA.x + g * 2, ARENA.y + g * 2}, 22 + g, fade(edge, 0.035))
 	}
-	foster.BatcherRectRounded(b, r, 22, FLOOR)
+	round_rect(b, r, 22, FLOOR)
 	for x := f32(40); x < ARENA.x; x += 40 {
-		foster.BatcherLine(b, foster.Vec2{x, 6}, foster.Vec2{x, ARENA.y - 6}, 1, GRID)
+		r2d.line(b, foster.Vec2{x, 6}, foster.Vec2{x, ARENA.y - 6}, 1, GRID)
 	}
 	for y := f32(40); y < ARENA.y; y += 40 {
-		foster.BatcherLine(b, foster.Vec2{6, y}, foster.Vec2{ARENA.x - 6, y}, 1, GRID)
+		r2d.line(b, foster.Vec2{6, y}, foster.Vec2{ARENA.x - 6, y}, 1, GRID)
 	}
 	center := ARENA * 0.5
-	foster.BatcherCircleLine(b, center, 110, 3, 72, fade(edge, 0.18))
-	foster.BatcherCircle(b, center, 10, 24, fade(edge, 0.25))
-	foster.BatcherLine(b, foster.Vec2{center.x, 0}, foster.Vec2{center.x, ARENA.y}, 3, fade(edge, 0.12))
-	foster.BatcherRectRoundedLine(b, r, 22, 4, edge)
+	r2d.circle_line(b, center, 110, 3, 72, fade(edge, 0.18))
+	r2d.circle(b, center, 10, 24, fade(edge, 0.25))
+	r2d.line(b, foster.Vec2{center.x, 0}, foster.Vec2{center.x, ARENA.y}, 3, fade(edge, 0.12))
+	round_rect_line(b, r, 22, 4, edge)
 }
 
 draw_coins :: proc(v: ^View) {
-	b := &v.batcher
+	b := &v.ui
 	for _, cv in v.coins {
 		gem := cv.value > 1
 		t := min(cv.age * 3.5, 1)
@@ -364,26 +372,26 @@ draw_coins :: proc(v: ^View) {
 		p := cv.pos + {0, math.sin(v.time * 3 + phase) * 3}
 		light, dark := gem ? GEM : GOLD, gem ? GEM_DARK : GOLD_DARK
 
-		foster.BatcherCircle(b, cv.pos + {0, radius + 6}, radius * 0.7, 16, fade(INK, 0.3))
-		foster.BatcherCircle(b, p, radius * (gem ? 3.2 : 2.4), 24, fade(light, gem ? 0.35 : 0.25), CLEAR)
+		r2d.circle(b, cv.pos + {0, radius + 6}, radius * 0.7, 16, fade(INK, 0.3))
+		r2d.circle_gradient(b, p, radius * (gem ? 3.2 : 2.4), 24, fade(light, gem ? 0.35 : 0.25), CLEAR)
 		spin := 0.3 + 0.7 * abs(math.cos(v.time * 2.4 + phase))
 		push_local(v, p, {spin, 1}, 0)
 		if gem {
 			s := radius * 1.25
-			foster.BatcherTriangle(b, foster.Vec2{0, -s}, foster.Vec2{s, 0}, foster.Vec2{-s, 0}, light)
-			foster.BatcherTriangle(b, foster.Vec2{-s, 0}, foster.Vec2{s, 0}, foster.Vec2{0, s}, dark)
-			foster.BatcherTriangle(b, foster.Vec2{0, -s}, foster.Vec2{s * 0.35, -s * 0.2}, foster.Vec2{-s * 0.35, -s * 0.2}, fade(WHITE, 0.7))
+			r2d.triangle(b, foster.Vec2{0, -s}, foster.Vec2{s, 0}, foster.Vec2{-s, 0}, light)
+			r2d.triangle(b, foster.Vec2{-s, 0}, foster.Vec2{s, 0}, foster.Vec2{0, s}, dark)
+			r2d.triangle(b, foster.Vec2{0, -s}, foster.Vec2{s * 0.35, -s * 0.2}, foster.Vec2{-s * 0.35, -s * 0.2}, fade(WHITE, 0.7))
 		} else {
-			foster.BatcherCircle(b, foster.Vec2{}, radius, 24, dark)
-			foster.BatcherCircle(b, foster.Vec2{}, radius * 0.78, 24, light)
-			foster.BatcherCircle(b, foster.Vec2{-radius * 0.25, -radius * 0.3}, radius * 0.25, 12, fade(WHITE, 0.75))
+			r2d.circle(b, foster.Vec2{}, radius, 24, dark)
+			r2d.circle(b, foster.Vec2{}, radius * 0.78, 24, light)
+			r2d.circle(b, foster.Vec2{-radius * 0.25, -radius * 0.3}, radius * 0.25, 12, fade(WHITE, 0.75))
 		}
-		foster.BatcherPopMatrix(b)
+		r2d.pop_matrix(b)
 	}
 }
 
 draw_players :: proc(v: ^View, reg: ^objects.Registry, local_id: objects.Network_Id) {
-	b := &v.batcher
+	b := &v.ui
 	R := PLAYER_RADIUS
 	for id, pv in v.players {
 		obj, ok := objects.get(reg, id)
@@ -396,15 +404,15 @@ draw_players :: proc(v: ^View, reg: ^objects.Registry, local_id: objects.Network
 		for k in 0 ..< pv.trail_len {
 			idx := (pv.trail_head - 1 - k + TRAIL * 2) % TRAIL
 			t := 1 - f32(k) / f32(TRAIL)
-			foster.BatcherCircle(b, pv.trail[idx], R * (0.35 + 0.55 * t), 20, fade(col, t * (0.06 + 0.3 * p.dash)))
+			r2d.circle(b, pv.trail[idx], R * (0.35 + 0.55 * t), 20, fade(col, t * (0.06 + 0.3 * p.dash)))
 		}
-		foster.BatcherCircle(b, pos + {0, R * 0.55}, R * 0.95, 24, fade(INK, 0.35))
+		r2d.circle(b, pos + {0, R * 0.55}, R * 0.95, 24, fade(INK, 0.35))
 		if p.dash > 0 {
-			foster.BatcherCircle(b, pos, R * 3, 32, fade(col, 0.55 * p.dash), CLEAR)
+			r2d.circle_gradient(b, pos, R * 3, 32, fade(col, 0.55 * p.dash), CLEAR)
 		}
 		if id == local_id {
 			ring := R + 9 + math.sin(v.time * 5) * 2
-			foster.BatcherCircleLine(b, pos, ring, 2.5, 48, fade(WHITE, 0.55))
+			r2d.circle_line(b, pos, ring, 2.5, 48, fade(WHITE, 0.55))
 		}
 
 		// 沿速度方向拉伸，角色“看向”移动方向。
@@ -412,26 +420,26 @@ draw_players :: proc(v: ^View, reg: ^objects.Registry, local_id: objects.Network
 		push_local(v, pos, {1 + stretch, 1 - stretch * 0.8}, pv.facing)
 		draw_blob_body(b, col)
 		if p.hit > 0 && math.sin(v.time * 38) > 0 {
-			foster.BatcherCircle(b, foster.Vec2{}, R + 1, 40, fade(WHITE, 0.65 * p.hit))
+			r2d.circle(b, foster.Vec2{}, R + 1, 40, fade(WHITE, 0.65 * p.hit))
 		}
-		foster.BatcherPopMatrix(b)
+		r2d.pop_matrix(b)
 	}
 }
 
 // 角色本体：在已压好的局部矩阵原点绘制，眼睛朝 +X。
-draw_blob_body :: proc(b: ^foster.Batcher, col: foster.Color) {
+draw_blob_body :: proc(b: ^r2d.Render2D, col: foster.Color) {
 	R := PLAYER_RADIUS
-	foster.BatcherCircle(b, foster.Vec2{}, R, 40, mix(col, WHITE, 0.35), col)
-	foster.BatcherCircleLine(b, foster.Vec2{}, R, 3, 40, mix(col, INK, 0.35))
+	r2d.circle_gradient(b, foster.Vec2{}, R, 40, mix(col, WHITE, 0.35), col)
+	r2d.circle_line(b, foster.Vec2{}, R, 3, 40, mix(col, INK, 0.35))
 	for side in ([]f32{-1, 1}) {
 		eye := foster.Vec2{R * 0.38, side * R * 0.34}
-		foster.BatcherCircle(b, eye, 6.5, 16, WHITE)
-		foster.BatcherCircle(b, eye + {2.2, 0}, 3.2, 12, foster.Color{20, 22, 36, 255})
+		r2d.circle(b, eye, 6.5, 16, WHITE)
+		r2d.circle(b, eye + {2.2, 0}, 3.2, 12, foster.Color{20, 22, 36, 255})
 	}
 }
 
 draw_labels :: proc(v: ^View, reg: ^objects.Registry, local_id: objects.Network_Id) {
-	b := &v.batcher
+	b := &v.ui
 	for id, pv in v.players {
 		obj, ok := objects.get(reg, id)
 		if !ok do continue
@@ -444,7 +452,7 @@ draw_labels :: proc(v: ^View, reg: ^objects.Registry, local_id: objects.Network_
 		above := pv.pos.y > PLAYER_RADIUS + 40
 		at := to_screen(v, pv.pos + {0, above ? -(PLAYER_RADIUS + 22) : PLAYER_RADIUS + 26})
 		tag := foster.Rect{at.x - nw / 2 - 8 * v.scale, at.y - 11 * v.scale, nw + 16 * v.scale, 22 * v.scale}
-		foster.BatcherRectRounded(b, tag, tag.Height / 2, fade(INK, 0.55))
+		round_rect(b, tag, tag.Height / 2, fade(INK, 0.55))
 		text(v, name, {at.x, tag.Y + 1 * v.scale}, size, id == local_id ? WHITE : mix(slot_color(p.slot), WHITE, 0.4), 0.5)
 	}
 }
@@ -455,7 +463,7 @@ Row :: struct {
 }
 
 draw_hud :: proc(a: ^App, v: ^View, match: ^Match, local_id: objects.Network_Id, w, h, ui: f32, origin: [2]f32, scale: f32) {
-	b := &v.batcher
+	b := &v.ui
 	reg := view_registry(a)
 	rows := make([dynamic]Row, context.temp_allocator)
 	for id, obj in reg.objects {
@@ -474,7 +482,7 @@ draw_hud :: proc(a: ^App, v: ^View, match: ^Match, local_id: objects.Network_Id,
 	case .Server: status = fmt.tprintf("SERVER  :%d  (spectating)", a.port)
 	case .Client: status = fmt.tprintf("CLIENT  %s:%d", a.address, a.port)
 	}
-	foster.BatcherCircle(b, foster.Vec2{pad + 5 * ui, 66 * ui}, 5 * ui, 12, NEON)
+	r2d.circle(b, foster.Vec2{pad + 5 * ui, 66 * ui}, 5 * ui, 12, NEON)
 	line := fmt.tprintf("%s   %d online", status, len(rows))
 	stats: nr.Net_Stats
 	if a.client_ready do stats = nr.stats(&a.runtime.client)
@@ -507,14 +515,14 @@ draw_hud :: proc(a: ^App, v: ^View, match: ^Match, local_id: objects.Network_Id,
 		panel := foster.Rect{px, py, panel_w, row_h * f32(len(rows)) + 14 * ui}
 		panel.Y = origin.y + 14 * ui
 		panel.X = origin.x + ARENA.x * scale - panel_w - 14 * ui
-		foster.BatcherRectRounded(b, panel, 12 * ui, fade(foster.Color{8, 10, 20, 255}, 0.72))
+		round_rect(b, panel, 12 * ui, fade(foster.Color{8, 10, 20, 255}, 0.72))
 		for row, i in rows {
 			y := panel.Y + 7 * ui + f32(i) * row_h
 			col := slot_color(row.slot)
 			if row.local {
-				foster.BatcherRectRounded(b, foster.Rect{panel.X + 6 * ui, y, panel_w - 12 * ui, row_h - 2 * ui}, 8 * ui, fade(col, 0.22))
+				round_rect(b, foster.Rect{panel.X + 6 * ui, y, panel_w - 12 * ui, row_h - 2 * ui}, 8 * ui, fade(col, 0.22))
 			}
-			foster.BatcherCircle(b, foster.Vec2{panel.X + 22 * ui, y + row_h * 0.47}, 7 * ui, 16, col)
+			r2d.circle(b, foster.Vec2{panel.X + 22 * ui, y + row_h * 0.47}, 7 * ui, 16, col)
 			label := row.local ? fmt.tprintf("P%d  you", row.slot + 1) : fmt.tprintf("P%d", row.slot + 1)
 			text(v, label, {panel.X + 38 * ui, y + 4 * ui}, 18 * ui, WHITE)
 			text(v, fmt.tprintf("%d", row.score), {panel.X + panel_w - 16 * ui, y + 4 * ui}, 18 * ui, GOLD, 1)
@@ -527,7 +535,7 @@ draw_hud :: proc(a: ^App, v: ^View, match: ^Match, local_id: objects.Network_Id,
 	arena := foster.Rect{origin.x, origin.y, ARENA.x * scale, ARENA.y * scale}
 	center := [2]f32{arena.X + arena.Width / 2, arena.Y + arena.Height / 2}
 	if match != nil && Phase(match.phase) == .Results {
-		foster.BatcherRectRounded(b, arena, 22 * scale, fade(foster.Color{6, 8, 16, 255}, 0.7))
+		round_rect(b, arena, 22 * scale, fade(foster.Color{6, 8, 16, 255}, 0.7))
 		title := "DRAW"
 		color := WHITE
 		if match.winner >= 0 {
@@ -539,19 +547,19 @@ draw_hud :: proc(a: ^App, v: ^View, match: ^Match, local_id: objects.Network_Id,
 		for row, i in rows {
 			if i >= 5 do break
 			y := center.y + f32(i) * 34 * ui - 10 * ui
-			foster.BatcherCircle(b, foster.Vec2{center.x - 90 * ui, y + 13 * ui}, 8 * ui, 16, slot_color(row.slot))
+			r2d.circle(b, foster.Vec2{center.x - 90 * ui, y + 13 * ui}, 8 * ui, 16, slot_color(row.slot))
 			text(v, fmt.tprintf("P%d", row.slot + 1), {center.x - 70 * ui, y}, 22 * ui, WHITE)
 			text(v, fmt.tprintf("%d", row.score), {center.x + 100 * ui, y}, 22 * ui, GOLD, 1)
 		}
 		text(v, fmt.tprintf("next round in %d", int(math.ceil(match.time_left))), {center.x, arena.Y + arena.Height - 60 * ui}, 18 * ui, DIM, 0.5)
 	} else if a.client_ready && local_id == 0 {
-		foster.BatcherRectRounded(b, arena, 22 * scale, fade(foster.Color{6, 8, 16, 255}, 0.55))
+		round_rect(b, arena, 22 * scale, fade(foster.Color{6, 8, 16, 255}, 0.55))
 		msg := a.session.client_authenticated ? "Arena is full - spectating" : fmt.tprintf("Connecting to %s:%d", a.address, a.port)
 		text(v, msg, center + {0, -20 * ui}, 28 * ui, WHITE, 0.5)
 		text(v, "ESC  back to menu", center + {0, 64 * ui}, 16 * ui, DIM, 0.5)
 		for i in 0 ..< 3 {
 			t := 0.5 + 0.5 * math.sin(v.time * 5 - f32(i) * 0.8)
-			foster.BatcherCircle(b, foster.Vec2{center.x + (f32(i) - 1) * 22 * ui, center.y + 32 * ui}, (4 + 3 * t) * ui, 16, fade(NEON, 0.4 + 0.6 * t))
+			r2d.circle(b, foster.Vec2{center.x + (f32(i) - 1) * 22 * ui, center.y + 32 * ui}, (4 + 3 * t) * ui, 16, fade(NEON, 0.4 + 0.6 * t))
 		}
 	}
 }

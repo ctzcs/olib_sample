@@ -8,6 +8,8 @@ import "core:strconv"
 import "core:strings"
 
 import foster "olib:foster"
+import r2d "olib:kit/rendering/2d"
+import mat "olib:kit/rendering/material"
 
 // ==============================================================================
 // 开始菜单：选择开房或加入，填写地址/端口，不需要命令行参数
@@ -225,7 +227,7 @@ menu_start :: proc(a: ^App, app: ^foster.App) {
 menu_render :: proc(a: ^App, app: ^foster.App, target: foster.DrawableTarget) {
 	m := &a.menu
 	v := &a.view
-	b := &v.batcher
+	b := &v.ui
 	w, h := f32(target.WidthInPixels), f32(target.HeightInPixels)
 	m.size = {w, h}
 	l := menu_layout(m.size)
@@ -234,17 +236,16 @@ menu_render :: proc(a: ^App, app: ^foster.App, target: foster.DrawableTarget) {
 	point := [2]f32{mouse.Position.X, mouse.Position.Y}
 
 	foster.GraphicsDeviceClear(&app.GraphicsDevice, target, BG)
-	foster.BatcherClear(b)
-	foster.BatcherCircle(b, foster.Vec2{w / 2, h * 0.45}, max(w, h) * 0.75, 64, BG_GLOW, BG)
+	r2d.circle_gradient(b, foster.Vec2{w / 2, h * 0.45}, max(w, h) * 0.75, 64, BG_GLOW, BG)
 	draw_menu_backdrop(v, w, h, ui)
 
 	card := l.card
 	for i in 0 ..< 5 {
 		g := f32(5 - i) * 8 * ui
-		foster.BatcherRectRounded(b, foster.Rect{card.X - g, card.Y - g, card.Width + g * 2, card.Height + g * 2}, 26 * ui + g, fade(NEON, 0.03))
+		round_rect(b, foster.Rect{card.X - g, card.Y - g, card.Width + g * 2, card.Height + g * 2}, 26 * ui + g, fade(NEON, 0.03))
 	}
-	foster.BatcherRectRounded(b, card, 26 * ui, fade(foster.Color{16, 19, 34, 255}, 0.94))
-	foster.BatcherRectRoundedLine(b, card, 26 * ui, 2 * ui, fade(NEON, 0.45))
+	round_rect(b, card, 26 * ui, fade(foster.Color{16, 19, 34, 255}, 0.94))
+	round_rect_line(b, card, 26 * ui, 2 * ui, fade(NEON, 0.45))
 
 	cx := card.X + card.Width / 2
 	text(v, "NET ARENA", {cx, card.Y + 30 * ui}, 64 * ui, WHITE, 0.5)
@@ -252,11 +253,11 @@ menu_render :: proc(a: ^App, app: ^foster.App, target: foster.DrawableTarget) {
 
 	// 页签
 	track := foster.Rect{l.tab_host.X, l.tab_host.Y, l.tab_host.Width * 2, l.tab_host.Height}
-	foster.BatcherRectRounded(b, track, 14 * ui, foster.Color{10, 12, 22, 255})
+	round_rect(b, track, 14 * ui, foster.Color{10, 12, 22, 255})
 	active := m.tab == .Host ? l.tab_host : l.tab_join
 	knob := foster.Rect{active.X + 4 * ui, active.Y + 4 * ui, active.Width - 8 * ui, active.Height - 8 * ui}
-	foster.BatcherRectRounded(b, knob, 11 * ui, fade(NEON, 0.2))
-	foster.BatcherRectRoundedLine(b, knob, 11 * ui, 1.5 * ui, fade(NEON, 0.7))
+	round_rect(b, knob, 11 * ui, fade(NEON, 0.2))
+	round_rect_line(b, knob, 11 * ui, 1.5 * ui, fade(NEON, 0.7))
 	for tab in Menu_Tab {
 		r := tab == .Host ? l.tab_host : l.tab_join
 		label := tab == .Host ? "HOST A GAME" : "JOIN A GAME"
@@ -299,10 +300,10 @@ menu_render :: proc(a: ^App, app: ^foster.App, target: foster.DrawableTarget) {
 		btn.Y += 2 * ui
 	}
 	glow := hover ? 0.5 : 0.3 + 0.1 * math.sin(v.time * 3)
-	foster.BatcherRectRounded(b, foster.Rect{btn.X - 6 * ui, btn.Y - 2 * ui, btn.Width + 12 * ui, btn.Height + 14 * ui}, 20 * ui, fade(NEON, glow * 0.25))
+	round_rect(b, foster.Rect{btn.X - 6 * ui, btn.Y - 2 * ui, btn.Width + 12 * ui, btn.Height + 14 * ui}, 20 * ui, fade(NEON, glow * 0.25))
 	top_c := hover ? foster.Color{120, 245, 225, 255} : NEON
-	foster.BatcherRectRounded(b, btn, 16 * ui, mix(top_c, foster.Color{30, 160, 140, 255}, 0.25))
-	foster.BatcherRectRounded(b, foster.Rect{btn.X, btn.Y, btn.Width, btn.Height * 0.55}, 16 * ui, fade(WHITE, 0.12))
+	round_rect(b, btn, 16 * ui, mix(top_c, foster.Color{30, 160, 140, 255}, 0.25))
+	round_rect(b, foster.Rect{btn.X, btn.Y, btn.Width, btn.Height * 0.55}, 16 * ui, fade(WHITE, 0.12))
 	label := m.tab == .Host ? "START HOSTING" : "JOIN GAME"
 	text(v, label, {btn.X + btn.Width / 2, mid_y(btn, 24 * ui)}, 24 * ui, foster.Color{8, 30, 28, 255}, 0.5)
 
@@ -311,7 +312,9 @@ menu_render :: proc(a: ^App, app: ^foster.App, target: foster.DrawableTarget) {
 	}
 	text(v, "ENTER  start      TAB  next field      CTRL+V  paste      ESC  quit", {w / 2, h - 34 * ui}, 15 * ui, fade(DIM, 0.8), 0.5)
 
-	foster.BatcherRender(b, target)
+	if err := r2d.submit(b, {target = target, time = v.time}); err != .None {
+		fmt.eprintln("net_arena:", mat.draw_error_text(err))
+	}
 }
 
 // 文字绘制位置是顶边，这里按字号估算把文字放到矩形竖直居中。
@@ -320,31 +323,31 @@ mid_y :: proc(r: foster.Rect, size: f32) -> f32 {
 }
 
 draw_field :: proc(v: ^View, r: foster.Rect, label, value: string, focused: bool, point: [2]f32, ui: f32) {
-	b := &v.batcher
+	b := &v.ui
 	text(v, label, {r.X, r.Y - 28 * ui}, 15 * ui, focused ? NEON : DIM)
-	foster.BatcherRectRounded(b, r, 12 * ui, foster.Color{9, 11, 20, 255})
+	round_rect(b, r, 12 * ui, foster.Color{9, 11, 20, 255})
 	edge := focused ? NEON : inside(r, point) ? fade(WHITE, 0.35) : fade(WHITE, 0.14)
-	foster.BatcherRectRoundedLine(b, r, 12 * ui, (focused ? 2 : 1.5) * ui, edge)
+	round_rect_line(b, r, 12 * ui, (focused ? 2 : 1.5) * ui, edge)
 	size := 22 * ui
 	x := r.X + 18 * ui
 	text(v, value, {x, mid_y(r, size)}, size, WHITE)
 	if focused && math.mod(v.time, 1) < 0.55 {
 		cx := x + text_width(v, value, size) + 3 * ui
-		foster.BatcherRect(b, foster.Rect{cx, r.Y + 13 * ui, 2.5 * ui, r.Height - 26 * ui}, NEON)
+		r2d.rect(b, foster.Rect{cx, r.Y + 13 * ui, 2.5 * ui, r.Height - 26 * ui}, NEON)
 	}
 }
 
 draw_step_button :: proc(v: ^View, r: foster.Rect, label: string, enabled: bool, point: [2]f32, ui: f32) {
-	b := &v.batcher
+	b := &v.ui
 	hover := enabled && inside(r, point)
-	foster.BatcherRectRounded(b, r, 12 * ui, hover ? fade(NEON, 0.25) : foster.Color{9, 11, 20, 255})
-	foster.BatcherRectRoundedLine(b, r, 12 * ui, 1.5 * ui, fade(enabled ? NEON : WHITE, enabled ? 0.6 : 0.12))
+	round_rect(b, r, 12 * ui, hover ? fade(NEON, 0.25) : foster.Color{9, 11, 20, 255})
+	round_rect_line(b, r, 12 * ui, 1.5 * ui, fade(enabled ? NEON : WHITE, enabled ? 0.6 : 0.12))
 	text(v, label, {r.X + r.Width / 2, mid_y(r, 28 * ui)}, 28 * ui, enabled ? WHITE : fade(DIM, 0.4), 0.5)
 }
 
 // 背景里游荡的角色和金币，只是装饰。
 draw_menu_backdrop :: proc(v: ^View, w, h, ui: f32) {
-	b := &v.batcher
+	b := &v.ui
 	t := v.time
 	v.origin, v.scale = {}, ui * 1.4
 	for i in 0 ..< 10 {
@@ -354,8 +357,8 @@ draw_menu_backdrop :: proc(v: ^View, w, h, ui: f32) {
 			h * 0.5 + math.sin(t * 0.09 * (1 + fi * 0.05) + fi * 1.3) * h * 0.42,
 		}
 		bob := math.sin(t * 2 + fi) * 4 * ui
-		foster.BatcherCircle(b, foster.Vec2{p.x, p.y + bob}, 26 * ui, 24, fade(GOLD, 0.12), CLEAR)
-		foster.BatcherCircle(b, foster.Vec2{p.x, p.y + bob}, 7 * ui, 16, fade(GOLD, 0.35))
+		r2d.circle_gradient(b, foster.Vec2{p.x, p.y + bob}, 26 * ui, 24, fade(GOLD, 0.12), CLEAR)
+		r2d.circle(b, foster.Vec2{p.x, p.y + bob}, 7 * ui, 16, fade(GOLD, 0.35))
 	}
 	for i in 0 ..< MAX_PLAYERS {
 		fi := f32(i)
@@ -363,9 +366,9 @@ draw_menu_backdrop :: proc(v: ^View, w, h, ui: f32) {
 		angle := t * speed + fi * 0.785
 		p := [2]f32{w * 0.5 + math.cos(angle) * w * (0.36 + 0.05 * math.sin(fi)), h * 0.5 + math.sin(angle * 1.3) * h * 0.38}
 		vel := [2]f32{-math.sin(angle) * w * 0.36, math.cos(angle * 1.3) * h * 0.38 * 1.3}
-		foster.BatcherCircle(b, foster.Vec2{p.x, p.y + PLAYER_RADIUS * 0.8 * v.scale}, PLAYER_RADIUS * v.scale * 0.9, 24, fade(INK, 0.25))
+		r2d.circle(b, foster.Vec2{p.x, p.y + PLAYER_RADIUS * 0.8 * v.scale}, PLAYER_RADIUS * v.scale * 0.9, 24, fade(INK, 0.25))
 		push_local(v, p / v.scale, {1, 1}, math.atan2(vel.y, vel.x))
 		draw_blob_body(b, slot_color(i32(i)))
-		foster.BatcherPopMatrix(b)
+		r2d.pop_matrix(b)
 	}
 }
