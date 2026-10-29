@@ -240,6 +240,34 @@ run.bat net_arena client 192.168.1.20 7777
   (on the menu: `net_arena_menu_host.png`, or `menu_join` with `join`).
   `-define:NET_ARENA_ROUND=<seconds>` shortens rounds for testing the results screen.
 
+## Net FPS: a first-person shooter on onet + Render3D
+
+```bat
+run.bat net_fps
+run.bat net_fps host 7778 bots 4
+run.bat net_fps server 7778 bots 3 lag 80
+run.bat net_fps client 127.0.0.1 7778 lag 80
+```
+
+- `net_fps`: deathmatch in a boxy 40×40 m arena. WASD moves, Space jumps, the mouse aims (captured while
+  playing), the left button fires, Tab shows scores. Esc pauses and releases the mouse while the match (and a
+  host's server) keeps running, so you can start another client; click to resume, Esc again returns to the same
+  host/join menu as `net_arena`. Switching away from the window also releases the mouse.
+- All 2D (scene compositing, HUD, menu) is drawn with Render2D; rounded panels are small helpers in `draw2d.odin`.
+- Movement is predicted with an onet `Simulation_World` (`player.odin`): 6-byte input (move bits, jump counter,
+  quantised yaw/pitch) and a 34-byte state; level collision is shared box code (`level.odin`), so client and
+  server step identically. Health, kills and respawn timers stay ordinary replicated members.
+- Shooting is hitscan with lag compensation: the client draws its tracer at once and sends `RPC_FIRE`
+  through `rpc.send_with` with the authority tick it was looking at; the server rewinds other players to that
+  tick (at most 0.5 s), tests walls plus body/head boxes, and broadcasts tracers and kills (`game.odin`).
+- Rendering is one instanced Render3D shader (`shaders/Arena.oshader`: sun + hemisphere light, world-space grid,
+  distance fog, an emissive variant for tracers and the muzzle flash). Rebuild it with
+  `odin run ../olib/tools/shaders -- -dir:src/net_fps/shaders`.
+- `bots <n>` adds server-side bots that patrol, strafe and shoot when they can see you. `lag <ms>` delays this
+  process's outgoing packets; the HUD then shows the prediction lead and correction count.
+- `shot` captures the menu, or with a mode waits until an enemy is in view (the screenshot autopilot aims and
+  fires at the nearest one) and writes `library/screenshots/net_fps_<mode>.png`.
+
 ## Hot reload: the smallest example
 
 ```bat

@@ -1,0 +1,67 @@
+// net_fps 场景、角色与特效共用：太阳 + 半球光、世界坐标网格线、距离雾；颜色来自每个实例的 tint。
+// _grid 控制网格线强度（墙地为 1，角色为 0），_emissive 让曳光、枪口火光不受光照与雾影响。
+Shader "Arena"
+{
+    Label "net_fps / Arena"
+    Preview 3D
+    Output "color"
+    Instanced
+    Properties
+    {
+        _grid ("Grid lines", Range(0,1)) = 1
+        _emissive ("Emissive", Range(0,1)) = 0
+    }
+
+    Pass "main"
+    {
+        Label "Main"
+        Draw Model
+        Cull Back
+        Blend Opaque
+        ZTest Less
+        ZWrite On
+        HLSLPROGRAM
+        #include "olib/model.hlsli"
+        struct Input { OlibInstanceInput Instance; float3 Position : TEXCOORD0; float3 Normal : TEXCOORD1; };
+        struct Output { float4 Position : SV_Position; float3 Normal : TEXCOORD0; float3 World : TEXCOORD1; OlibInstance Instance; };
+        Output vertex_main(Input v)
+        {
+            Output o;
+            float4x4 world = olib_world(v.Instance);
+            o.World = mul(float4(v.Position, 1), world).xyz;
+            o.Position = mul(float4(o.World, 1), Wvp);
+            // 非等比缩放的盒子用逆转置法线。
+            float3 scale2 = float3(dot(world[0].xyz, world[0].xyz), dot(world[1].xyz, world[1].xyz), dot(world[2].xyz, world[2].xyz));
+            o.Normal = mul(v.Normal / max(scale2, 0.00001), (float3x3)world);
+            o.Instance = olib_instance_from(v.Instance);
+            return o;
+        }
+        float4 fragment_main(Output v) : SV_Target0
+        {
+            olib_instance = v.Instance;
+            float3 n = normalize(v.Normal);
+            float3 base = InstanceTint.rgb;
+
+            // 按法线主轴取世界平面坐标画 1 m 网格，2 m 处线条更重。
+            float3 a = abs(n);
+            float2 uv = a.y > 0.5 ? v.World.xz : (a.x > 0.5 ? v.World.zy : v.World.xy);
+            float2 g1 = abs(frac(uv) - 0.5);
+            float2 g2 = abs(frac(uv * 0.5) - 0.5);
+            float line1 = smoothstep(0.47, 0.495, max(g1.x, g1.y));
+            float line2 = smoothstep(0.485, 0.4975, max(g2.x, g2.y));
+            base *= 1 - _grid * (0.10 * line1 + 0.16 * line2);
+
+            float3 sun = normalize(float3(-0.45, 0.85, 0.3));
+            float diffuse = saturate(dot(n, sun));
+            float hemi = 0.5 + 0.5 * n.y;
+            float3 ambient = lerp(float3(0.30, 0.27, 0.25), float3(0.55, 0.62, 0.75), hemi);
+            float3 lit = base * (ambient * 0.75 + diffuse * float3(1.0, 0.95, 0.85) * 0.7);
+
+            float dist = length(CameraPosition.xyz - v.World);
+            float fog = saturate((dist - 18) / 55);
+            lit = lerp(lit, float3(0.62, 0.72, 0.84), fog * 0.85);
+            return float4(lerp(lit, InstanceTint.rgb, _emissive), 1);
+        }
+        ENDHLSL
+    }
+}

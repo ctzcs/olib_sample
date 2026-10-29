@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "files": [
+    {
+      "path": "Arena.oshader",
+      "hash": "54148265d220af96"
+    },
+    {
+      "path": "olib/fullscreen.hlsli",
+      "hash": "ec13d55531b78495"
+    },
+    {
+      "path": "olib/instance.hlsli",
+      "hash": "510a397a69a640ba"
+    },
+    {
+      "path": "olib/model.hlsli",
+      "hash": "b80c33d8334ac722"
+    },
+    {
+      "path": "olib/sprite.hlsli",
+      "hash": "bddea0ee037a6ec4"
+    },
+    {
+      "path": "olib/sprite_vertex.hlsli",
+      "hash": "97b96b858b251d71"
+    }
+  ],
+  "build": {
+    "toolchain": {
+      "policy": "olib-shader-1;spv=shadercross:HLSL:SPIRV;msl=shadercross:SPIRV:MSL;legacy=shadercross:SPIRV:DXIL;direct=dxc:-T:vs_6_0/ps_6_0:-E:vertex_main/fragment_main:-HV:2021:-O3:-Ges;reflect=shadercross:SPIRV:JSON",
+      "dxil": "spirv",
+      "shadercross": {
+        "path": "D:\\Tools\\ShaderCross\\bin\\shadercross.exe",
+        "version": "distribution-fnv1a64:ee4c3f057c3e3ac2"
+      },
+      "dxc": {
+        "path": "",
+        "version": ""
+      }
+    },
+    "outputs": [
+      {
+        "path": "Arena.shader.json",
+        "hash": "8402a0d3bb6724e4"
+      },
+      {
+        "path": "Arena_main.fragment.dxil",
+        "hash": "25272c1f5a9a4a43"
+      },
+      {
+        "path": "Arena_main.fragment.msl",
+        "hash": "d62b8349ab71cb8e"
+      },
+      {
+        "path": "Arena_main.fragment.spv",
+        "hash": "4049e8347d086cd0"
+      },
+      {
+        "path": "Arena_main.vertex.dxil",
+        "hash": "ec27f7f39b5a6897"
+      },
+      {
+        "path": "Arena_main.vertex.msl",
+        "hash": "814a5f682b7b904b"
+      },
+      {
+        "path": "Arena_main.vertex.spv",
+        "hash": "6c9ed00f58ba6490"
+      }
+    ]
+  }
+}
