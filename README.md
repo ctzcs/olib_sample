@@ -234,7 +234,8 @@ run.bat net_arena client 192.168.1.20 7777
   are smoothed or drawn locally. Despawned coins are reclaimed once every client has acknowledged them.
 - `lag <ms>` delays this process's outgoing packets through `session.set_network_conditions`, on either backend
   (use it on both ends, e.g. `server 7777 lag 80` + `client 127.0.0.1 7777 lag 80` for ~210 ms RTT); the HUD
-  then shows ping, prediction lead and the correction count. `udp` switches to onet's native UDP backend.
+  then shows ping, prediction lead and the correction count. Both net samples use onet's native UDP backend by default (pure Odin + system sockets, the same
+  code on Windows, macOS and Linux, no extra library to ship); `enet` switches to ENet, and both ends must match.
   A dedicated `server` prints its object count every 30 s.
 - `shot` runs for a few seconds, writes `library/screenshots/net_arena_<mode>.png` and exits
   (on the menu: `net_arena_menu_host.png`, or `menu_join` with `join`).
@@ -263,6 +264,7 @@ run.bat net_fps client 127.0.0.1 7778 lag 80
 - Rendering is one instanced Render3D shader (`shaders/Arena.oshader`: sun + hemisphere light, world-space grid,
   distance fog, an emissive variant for tracers and the muzzle flash). Rebuild it with
   `odin run ../olib/tools/shaders -- -dir:src/net_fps/shaders`.
+- Like `net_arena`, the network backend is onet's native UDP unless `enet` is given on both ends.
 - `bots <n>` adds server-side bots that patrol, strafe and shoot when they can see you. `lag <ms>` delays this
   process's outgoing packets; the HUD then shows the prediction lead and correction count.
 - `shot` captures the menu, or with a mode waits until an enemy is in view (the screenshot autopilot aims and

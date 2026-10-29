@@ -18,7 +18,7 @@ import "olib:thirdparty/onet/transport/udp"
 //   net_arena server [port]           纯服务器，窗口为观战视角
 //   net_arena client [address] [port] 加入别人的房间
 // 附加：bots <n> 由服务器加入 n 个机器人；join 让菜单默认停在加入页；
-//       udp 改用原生 UDP 后端；lag <ms> 让本进程出站包延迟 ms（任一后端，两端都设置）；
+//       enet 改用 ENet 后端（默认是 onet 原生 UDP，两端须一致）；lag <ms> 让本进程出站包延迟 ms（任一后端，两端都设置）；
 //       shot 运行几秒后截图到 library/screenshots 并退出
 
 DEFAULT_PORT :: 7777
@@ -46,7 +46,7 @@ App :: struct {
 	server_sim_ready, client_sim_ready: bool,
 	udp:           udp.Transport,
 	udp_ready:     bool,
-	use_udp:       bool,
+	use_enet:      bool, // 默认用 onet 原生 UDP，各平台同一后端、无外部库
 	lag_ms:        int,
 	// 客户端输入
 	dash_seq:      u8,
@@ -103,8 +103,10 @@ parse_args :: proc(a: ^App, args: []string) -> (explicit, ok: bool) {
 			a.shot = true
 		case "join":
 			a.join_tab = true
+		case "enet":
+			a.use_enet = true
 		case "udp":
-			a.use_udp = true
+			a.use_enet = false // 旧参数，UDP 已是默认
 		case "lag":
 			if i + 1 >= len(args) do return false, false
 			ms, ms_ok := strconv.parse_int(args[i + 1], 10)

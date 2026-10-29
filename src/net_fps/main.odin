@@ -12,6 +12,7 @@ import nr "olib:thirdparty/onet/runtime"
 import "olib:thirdparty/onet/session"
 import sim "olib:thirdparty/onet/simulation"
 import "olib:thirdparty/onet/transport"
+import "olib:thirdparty/onet/transport/udp"
 
 // 联网第一人称射击示例：onet（复制、整世界预测、RPC、延迟补偿）+ Render3D。
 // 不带参数启动时显示开始菜单；命令行可跳过菜单：
@@ -19,6 +20,7 @@ import "olib:thirdparty/onet/transport"
 //   net_fps server [port]           纯服务器，窗口为观战视角
 //   net_fps client [address] [port] 加入别人的房间
 // 附加：bots <n> 由服务器加入 n 个机器人；join 让菜单默认停在加入页；
+//       enet 改用 ENet 后端（默认是 onet 原生 UDP，两端须一致）；
 //       lag <ms> 让本进程出站包延迟 ms（两端都设置）；shot 运行几秒后截图并退出
 
 DEFAULT_PORT :: 7778
@@ -57,7 +59,9 @@ App :: struct {
 	bots:          int,
 	lag_ms:        int,
 	join_tab:      bool,
-	use_udp:       bool, // 菜单沿用 net_arena 的字段，本示例不切换后端
+	use_enet:      bool, // 默认用 onet 原生 UDP，各平台同一后端、无外部库
+	udp:           udp.Transport,
+	udp_ready:     bool,
 	clock:         f32,
 	shot:          bool,
 	shot_target:   foster.Target,
@@ -108,6 +112,8 @@ parse_args :: proc(a: ^App, args: []string) -> (explicit, ok: bool) {
 			a.shot = true
 		case "join":
 			a.join_tab = true
+		case "enet":
+			a.use_enet = true
 		case "lag":
 			if i + 1 >= len(args) do return false, false
 			ms, ms_ok := strconv.parse_int(args[i + 1], 10)

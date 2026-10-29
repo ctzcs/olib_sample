@@ -9,6 +9,7 @@ import nr "olib:thirdparty/onet/runtime"
 import "olib:thirdparty/onet/session"
 import sim "olib:thirdparty/onet/simulation"
 import "olib:thirdparty/onet/transport"
+import "olib:thirdparty/onet/transport/udp"
 
 // ==============================================================================
 // 网络生命周期：一个 Session + 一个 Runtime，由 Foster 的 update 单线程驱动
@@ -23,6 +24,13 @@ net_start :: proc(a: ^App) -> bool {
 	s := &a.session
 	session.init(s, TICK_MS)
 	a.session_ready = true
+	if !a.use_enet {
+		// onet 原生 UDP（纯 Odin + 系统 socket），Windows/macOS/Linux 同一实现；Session 借用它，最后销毁。
+		if !udp.init(&a.udp, udp.default_config()) || !session.set_driver(s, udp.driver(&a.udp)) {
+			return false
+		}
+		a.udp_ready = true
+	}
 	if a.lag_ms > 0 {
 		session.set_network_conditions(s, {seed = 1, latency_ms = a.lag_ms, jitter_ms = a.lag_ms / 5})
 	}
@@ -88,7 +96,7 @@ bind_world :: proc(w: ^nr.World, world: ^sim.Simulation_World, authority: bool, 
 	return nr.bind_simulation(w, world) && nr.register_world_component(w, PLAYER_TYPE, build_player_system, a)
 }
 
-// 销毁顺序：Runtime（close 一次完成）→ Simulation_World → Registry → Session。
+// 销毁顺序：Runtime（close 一次完成）→ Simulation_World → Registry → Session → UDP 后端。
 net_stop :: proc(a: ^App) {
 	if a.runtime_ready do nr.close(&a.runtime)
 	if a.client_sim_ready do sim.world_destroy(&a.client_sim)
@@ -96,9 +104,11 @@ net_stop :: proc(a: ^App) {
 	if a.client_ready do objects.registry_destroy(&a.client_reg)
 	if a.server_ready do objects.registry_destroy(&a.server_reg)
 	if a.session_ready do session.destroy(&a.session)
+	if a.udp_ready do udp.destroy(&a.udp)
 	// 清零后可以从菜单再开一局；重复调用是空操作。
 	a.session, a.server_reg, a.client_reg, a.runtime = {}, {}, {}, {}
-	a.server_sim, a.client_sim = {}, {}
+	a.server_sim, a.client_sim, a.udp = {}, {}, {}
+	a.udp_ready = false
 	a.session_ready, a.server_ready, a.client_ready, a.runtime_ready = false, false, false, false
 	a.server_sim_ready, a.client_sim_ready = false, false
 	a.net_carry, a.jump_seq, a.move_bits, a.fire_timer = 0, 0, {}, 0

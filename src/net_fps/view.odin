@@ -338,7 +338,7 @@ record_scene :: proc(a: ^App, eye: [3]f32, yaw, pitch: f32, alive: bool) {
 		append(&v.items, r3d.Model_Item{place(base + up * 0.036 - fwd * 0.03, {0.012, 0.012, 0.12}, yaw, pitch), {0.2, 0.7, 0.62, 1}})
 		if v.muzzle > 0 {
 			tip := base + fwd * 0.18
-			s := 0.08 + 0.06 * v.muzzle
+			s := 0.03 + 0.025 * v.muzzle
 			append(&v.glows, r3d.Model_Item{place(tip, {s, s, s}, yaw + v.time * 7, pitch), {1, 0.85, 0.45, 1}})
 		}
 	}

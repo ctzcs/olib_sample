@@ -23,8 +23,8 @@ net_start :: proc(a: ^App) -> bool {
 	s := &a.session
 	session.init(s, TICK_MS)
 	a.session_ready = true
-	if a.use_udp {
-		// 可选的原生 UDP 后端；Session 借用它，最后销毁。
+	if !a.use_enet {
+		// onet 原生 UDP（纯 Odin + 系统 socket），Windows/macOS/Linux 同一实现；Session 借用它，最后销毁。
 		if !udp.init(&a.udp, udp.default_config()) || !session.set_driver(s, udp.driver(&a.udp)) {
 			return false
 		}
