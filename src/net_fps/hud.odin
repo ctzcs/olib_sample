@@ -202,11 +202,14 @@ draw_hud :: proc(a: ^App, w, h: f32) {
 		st := nr.stats(&a.runtime.client)
 		text(v, fmt.tprintf("lag %d ms   lead %d ticks   corrections %d", a.lag_ms, st.prediction_lead, st.corrections), {w / 2, h - 30 * ui}, 15 * ui, fade(NEON, 0.8), 0.5)
 	} else {
-		hint := "WASD move   SPACE jump   MOUSE aim   LMB fire   TAB scores   ESC release mouse"
+		hint := "WASD move   SPACE jump   LMB fire   V talk   F1 voice check   TAB scores   ESC release mouse"
 		hw := text_width(v, hint, 15 * ui)
 		round_rect(b, foster.Rect{w / 2 - hw / 2 - 12 * ui, h - 34 * ui, hw + 24 * ui, 26 * ui}, 13 * ui, fade(BG, 0.5))
 		text(v, hint, {w / 2, h - 32 * ui}, 15 * ui, fade(WHITE, 0.85), 0.5)
 	}
+
+	draw_voice_hud(a, w, h, ui)
+	if a.voice.diag.show && a.client_ready do draw_voice_diag(a, w, h, ui)
 
 	// 阵亡 / 连接中遮罩
 	if me != nil && me.respawn > 0 {
@@ -224,6 +227,7 @@ draw_hud :: proc(a: ^App, w, h: f32) {
 		r2d.rect(b, foster.Rect{0, 0, w, h}, fade(BG, 0.5))
 		text(v, "PAUSED", {w / 2, h * 0.36}, 64 * ui, WHITE, 0.5)
 		text(v, "click to resume      ESC  leave to menu", {w / 2, h * 0.36 + 84 * ui}, 20 * ui, DIM, 0.5)
+		draw_voice_devices(a, w, h, ui)
 	}
 
 	// 计分板：按住 Tab，或观战时常显
@@ -247,4 +251,77 @@ draw_hud :: proc(a: ^App, w, h: f32) {
 	if v.error != "" {
 		text(v, v.error, {pad, 80 * ui}, 16 * ui, DANGER)
 	}
+}
+
+// 语音：说话时左下角麦克风与电平；左侧列出正在说话的人；不可用时给出原因。
+draw_voice_hud :: proc(a: ^App, w, h, ui: f32) {
+	v := &a.view
+	b := &v.ui
+	vo := &a.voice
+	if !a.client_ready do return
+	x, y := 26 * ui, h - 168 * ui
+	if !vo.ready || vo.status != "" {
+		status := vo.ready ? vo.status : (vo.status != "" ? vo.status : "voice off")
+		text(v, status, {x, y + 8 * ui}, 14 * ui, fade(DIM, 0.9))
+	}
+	if vo.notice_time > 0 {
+		alpha := min(1, vo.notice_time * 2)
+		msg := fmt.tprintf("audio: %s", vo.notice)
+		mw := text_width(v, msg, 16 * ui)
+		round_rect(b, foster.Rect{w / 2 - mw / 2 - 14 * ui, 96 * ui, mw + 28 * ui, 30 * ui}, 12 * ui, fade(BG, 0.7 * alpha))
+		text(v, msg, {w / 2, 100 * ui}, 16 * ui, fade(WHITE, alpha), 0.5)
+	}
+	if vo.talking && vo.silent_time > 1 {
+		text(v, "Mic is silent - check Windows microphone privacy / mute, or press M to switch mic", {x, y - 26 * ui}, 15 * ui, DANGER)
+	}
+	if vo.talking {
+		round_rect(b, foster.Rect{x - 12 * ui, y - 4 * ui, 200 * ui, 34 * ui}, 12 * ui, fade(BG, 0.6))
+		r2d.circle(b, foster.Vec2{x + 6 * ui, y + 13 * ui}, 6 * ui, 16, mix(DANGER, WHITE, 0.2 + 0.2 * math.sin(v.time * 8)))
+		text(v, "MIC", {x + 18 * ui, y + 2 * ui}, 16 * ui, WHITE)
+		bar := foster.Rect{x + 62 * ui, y + 9 * ui, 110 * ui, 8 * ui}
+		r2d.rect(b, bar, fade(WHITE, 0.15))
+		bar.Width *= clamp(vo.level * 6, 0, 1)
+		if bar.Width > 0.5 do r2d.rect(b, bar, NEON)
+	}
+	row := 0
+	for id, _ in vo.receivers {
+		if !voice_speaking(vo, id) do continue
+		obj, ok := objects.get(&a.client_reg, id)
+		if !ok do continue
+		p := objects.component_data(obj, Player, PLAYER_TYPE)
+		if p == nil do continue
+		ry := h * 0.42 + f32(row) * 30 * ui
+		round_rect(b, foster.Rect{x - 12 * ui, ry - 4 * ui, 150 * ui, 28 * ui}, 10 * ui, fade(BG, 0.55))
+		for k in 0 ..< 3 {
+			bh := (4 + 8 * abs(math.sin(v.time * 9 + f32(k) * 1.7))) * ui
+			r2d.rect(b, foster.Rect{x + f32(k) * 6 * ui, ry + 18 * ui - bh, 4 * ui, bh}, SLOT_COLORS[p.slot % MAX_PLAYERS])
+		}
+		text(v, fmt.tprintf("%s  talking", slot_name(p.slot)), {x + 26 * ui, ry}, 16 * ui, WHITE)
+		row += 1
+	}
+}
+
+// 暂停画面：当前麦克风（含实时电平）与输出设备，M / O 切换。
+draw_voice_devices :: proc(a: ^App, w, h, ui: f32) {
+	v := &a.view
+	b := &v.ui
+	vo := &a.voice
+	if !vo.ready do return
+	panel := foster.Rect{w / 2 - 300 * ui, h * 0.36 + 140 * ui, 600 * ui, 150 * ui}
+	round_rect(b, panel, 14 * ui, fade(foster.Color{8, 10, 20, 255}, 0.8))
+	x := panel.X + 24 * ui
+	y := panel.Y + 18 * ui
+	text(v, "MICROPHONE   (M to switch)", {x, y}, 14 * ui, NEON)
+	text(v, vo.test_tone ? "voicetest tone" : voice_device_name(vo.rec_names, vo.mic_choice), {x, y + 22 * ui}, 18 * ui, WHITE)
+	bar := foster.Rect{panel.X + panel.Width - 180 * ui, y + 28 * ui, 150 * ui, 8 * ui}
+	r2d.rect(b, bar, fade(WHITE, 0.15))
+	fill := bar
+	fill.Width *= clamp(vo.mic_level * 8, 0, 1)
+	if fill.Width > 0.5 do r2d.rect(b, fill, NEON)
+	if vo.has_mic && vo.mic_level == 0 && !vo.test_tone {
+		text(v, "no signal", {bar.X + bar.Width, bar.Y - 22 * ui}, 13 * ui, DANGER, 1)
+	}
+	y += 70 * ui
+	text(v, "OUTPUT   (O to switch, plays a short beep)      L  hear your own mic", {x, y}, 14 * ui, NEON)
+	text(v, voice_device_name(vo.play_names, vo.out_choice), {x, y + 22 * ui}, 18 * ui, WHITE)
 }

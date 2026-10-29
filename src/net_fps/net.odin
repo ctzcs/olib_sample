@@ -66,6 +66,7 @@ net_start :: proc(a: ^App) -> bool {
 		// 服务器自己发起的广播也会在本地调用一次 handler，handler 里按 authority 跳过。
 		rpc.register(m, RPC_SHOT, on_shot, .Any_Observer)
 		rpc.register(m, RPC_KILL, on_kill, .Any_Observer)
+		rpc.register(m, RPC_VOICE, on_voice) // 只转发：说话人对象的 controller 才能发
 	}
 	if a.client_ready {
 		if !bind_world(&a.runtime.client, &a.client_sim, false, a) do return false
@@ -75,6 +76,7 @@ net_start :: proc(a: ^App) -> bool {
 		rpc.declare(m, RPC_FIRE)
 		rpc.register(m, RPC_SHOT, on_shot, .Any_Observer)
 		rpc.register(m, RPC_KILL, on_kill, .Any_Observer)
+		rpc.register(m, RPC_VOICE, on_voice)
 	}
 
 	switch a.mode {
@@ -170,8 +172,11 @@ read_input :: proc(a: ^App, app: ^foster.App, dt: f32) {
 	keys := &app.Input.State.Keyboard
 	mouse := &app.Input.State.Mouse
 	SENSITIVITY :: f32(0.0022)
-	a.yaw -= mouse.Delta.X * SENSITIVITY
-	a.pitch = clamp(a.pitch - mouse.Delta.Y * SENSITIVITY, -1.5, 1.5)
+	if !a.shot {
+		// 截图模式由 autopilot 控制视角，不读鼠标，避免多个窗口弹出时的位移干扰。
+		a.yaw -= mouse.Delta.X * SENSITIVITY
+		a.pitch = clamp(a.pitch - mouse.Delta.Y * SENSITIVITY, -1.5, 1.5)
+	}
 	bits: Move_Bits
 	if foster.KeyboardDown(keys, .W) || foster.KeyboardDown(keys, .Up) do bits += {.Forward}
 	if foster.KeyboardDown(keys, .S) || foster.KeyboardDown(keys, .Down) do bits += {.Back}

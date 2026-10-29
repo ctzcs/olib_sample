@@ -323,6 +323,11 @@ record_scene :: proc(a: ^App, eye: [3]f32, yaw, pitch: f32, alive: bool) {
 		gun := r.pos + {0, 1.2, 0} + right * 0.3 + look_dir(p.yaw, p.pitch) * 0.3
 		append(&v.items, r3d.Model_Item{place(gun, {0.09, 0.12, 0.62}, p.yaw, p.pitch), {0.16, 0.17, 0.2, 1}})
 		append(&v.glows, r3d.Model_Item{place(r.pos + {0, 1.64, 0} + fwd * 0.2, {0.3, 0.09, 0.04}, p.yaw), {0.95, 0.98, 1, 1}})
+		if voice_speaking(&a.voice, id) {
+			// 说话中：头顶上下浮动的小方块。
+			bob := math.sin(v.time * 6) * 0.05
+			append(&v.glows, r3d.Model_Item{place(r.pos + {0, 2.2 + bob, 0}, {0.16, 0.16, 0.16}, v.time * 2), {0.4, 1, 0.85, 1}})
+		}
 	}
 
 	// 第一人称枪：相机坐标系里的固定位置，开火时后坐。

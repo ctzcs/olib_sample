@@ -1,0 +1,39 @@
+NET FPS - a tiny LAN arena shooter (olib + onet + Render3D)
+
+START
+  Double-click net_fps.exe. Keep the DLLs (SDL3, opus, rnnoise) in the same folder.
+  Voice chat uses your default microphone; Windows may ask for microphone permission.
+
+  Host a game   - pick a port (default 7778) and optional bots, press START HOSTING.
+                  The menu shows the address friends should type, e.g. 192.168.1.20 : 7778.
+  Join a game   - type the host's address and port, press JOIN GAME.
+
+  The first time you host, Windows Firewall may ask about network access:
+  allow it on private networks, or friends cannot connect (UDP port 7778).
+
+CONTROLS
+  WASD        move              SPACE   jump
+  Mouse       aim               LMB     fire
+  V (hold)    voice chat        TAB     scores
+  ESC         release the mouse (pause)
+  Click       resume            ESC x2  leave to the menu
+  M / O       switch microphone / audio output (the pause screen shows both)
+  L           hear your own microphone (to check mic and speakers alone)
+
+VOICE CHECKLIST
+  Press F1 in a match: it shows which mic and speaker are really in use, whether your voice is sent,
+  whether the other player's voice arrives and is audible, and what is wrong. T plays a test beep.
+  The same report is written to net_fps_voice.log next to net_fps.exe - send that file if you need help.
+  Nobody hears you?  Pause (ESC) and watch the mic meter while you speak. If it stays empty,
+  press M until it moves, or allow desktop apps in Windows Settings > Privacy > Microphone
+  and make sure the mic is not muted in Sound settings > Recording.
+  You hear nothing?  Press O until you hear the beep, then use that output.
+  You never hear your own voice in a match (only with L); test with a second player or window.
+
+COMMAND LINE (optional)
+  net_fps.exe host 7778 bots 4
+  net_fps.exe server 7778 bots 3
+  net_fps.exe client 192.168.1.20 7778
+  Add "lag 80" on both ends to simulate ~200 ms round trip.
+  Add "mic USB" / "out Allure" (any part of a device name) to pick audio devices, "openmic" to talk without V.
+  Both ends must use the same backend: native UDP by default, add "enet" on both to use ENet.

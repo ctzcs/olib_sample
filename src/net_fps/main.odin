@@ -20,6 +20,8 @@ import "olib:thirdparty/onet/transport/udp"
 //   net_fps server [port]           纯服务器，窗口为观战视角
 //   net_fps client [address] [port] 加入别人的房间
 // 附加：bots <n> 由服务器加入 n 个机器人；join 让菜单默认停在加入页；
+//       voicetest 用 440 Hz 正弦代替麦克风并一直发送，验证语音链路；openmic 不按 V 也一直发送；diag 启动即打开语音诊断（F1）；
+//       mic <名称片段> / out <名称片段> 按设备名选麦克风与输出（如 mic USB、out Allure）；
 //       enet 改用 ENet 后端（默认是 onet 原生 UDP，两端须一致）；
 //       lag <ms> 让本进程出站包延迟 ms（两端都设置）；shot 运行几秒后截图并退出
 
@@ -31,6 +33,7 @@ App :: struct {
 	screen:        Screen,
 	menu:          Menu,
 	view:          View,
+	voice:         Voice,
 	mode:          Mode,
 	address:       string,
 	port:          u16,
@@ -110,6 +113,17 @@ parse_args :: proc(a: ^App, args: []string) -> (explicit, ok: bool) {
 		switch args[i] {
 		case "shot":
 			a.shot = true
+		case "voicetest":
+			a.voice.test_tone = true
+		case "openmic":
+			a.voice.open_mic = true
+		case "diag":
+			a.voice.diag.show = true
+		case "mic", "out":
+			if i + 1 >= len(args) do return false, false
+			if args[i] == "mic" do a.voice.mic_pick = args[i + 1]
+			else do a.voice.out_pick = args[i + 1]
+			i += 1
 		case "join":
 			a.join_tab = true
 		case "enet":
@@ -172,6 +186,7 @@ start_game :: proc(a: ^App) -> bool {
 leave_game :: proc(a: ^App, app: ^foster.App, reason: string) {
 	net_stop(a)
 	view_reset(&a.view)
+	voice_reset(&a.voice)
 	a.screen = .Menu
 	a.menu.message_n = 0
 	if reason != "" {
@@ -192,6 +207,7 @@ capture_mouse :: proc(a: ^App, app: ^foster.App, on: bool) {
 startup :: proc(app: ^foster.App) {
 	a := foster.AppGetUserDataAs(app, App)
 	view_init(&a.view, app)
+	voice_init(&a.voice, a)
 	menu_init(&a.menu, a)
 	if a.join_tab do menu_switch(&a.menu, .Join)
 	if a.screen == .Menu do foster.StartTextInput(&app.Window)
@@ -202,6 +218,7 @@ shutdown :: proc(app: ^foster.App) {
 	capture_mouse(a, app, false)
 	if a.shot do foster.TargetDispose(&a.shot_target)
 	menu_destroy(&a.menu)
+	voice_shutdown(&a.voice)
 	view_destroy(&a.view)
 }
 
@@ -255,6 +272,17 @@ update :: proc(app: ^foster.App) {
 		leave_game(a, app, reason)
 		return
 	}
+	// M / O 切换麦克风与输出设备（暂停画面列出当前设备与电平）。
+	// 截图模式不读这些键：自动测试窗口弹出时会抢焦点，避免把别处的按键当成输入。
+	if !a.shot {
+		if foster.KeyboardPressed(keys, .M) do voice_cycle_mic(&a.voice)
+		if foster.KeyboardPressed(keys, .O) do voice_cycle_output(&a.voice)
+		if foster.KeyboardPressed(keys, .L) do voice_toggle_monitor(&a.voice)
+		if foster.KeyboardPressed(keys, .F1) do a.voice.diag.show = !a.voice.diag.show
+		if foster.KeyboardPressed(keys, .T) do voice_beep(&a.voice)
+	}
+	// 暂停时不发言，但继续播放别人的声音。
+	if a.client_ready do voice_update(a, dt, !a.shot && !a.paused && foster.KeyboardDown(keys, .V))
 	view_update(a, dt)
 }
 
@@ -330,4 +358,6 @@ save_shot :: proc(a: ^App) {
 	suffix := a.screen == .Menu ? (a.menu.tab == .Host ? "menu_host" : "menu_join") : fmt.tprintf("%v", a.mode)
 	name := fmt.tprintf("%s/net_fps_%s.png", directory, suffix)
 	fmt.println(name, foster.ImageWritePng(&image, name))
+	vo := &a.voice
+	fmt.printfln("net_fps: voice ready=%v rnnoise=%v sent=%d received=%d talkers=%d playback_peak=%.2f %s", vo.ready, vo.has_rnnoise, vo.sent, vo.received, len(vo.receivers), vo.peak, vo.status)
 }

@@ -265,6 +265,26 @@ run.bat net_fps client 127.0.0.1 7778 lag 80
   distance fog, an emissive variant for tracers and the muzzle flash). Rebuild it with
   `odin run ../olib/tools/shaders -- -dir:src/net_fps/shaders`.
 - Like `net_arena`, the network backend is onet's native UDP unless `enet` is given on both ends.
+- Voice chat: hold V to talk (`voice.odin`, on `olib:thirdparty/voice` + `kit/audio` recording). Mic frames
+  (48 kHz mono, 20 ms) go through RNNoise when available and Opus, then an unreliable `RPC_VOICE` that the
+  server relays to the others; each talker gets a `Voice_Receiver` (jitter buffer + concealment) and is mixed
+  in stereo by distance and direction. Only push-to-talk frames are sent. Needs `opus.dll` (optional
+  `rnnoise.dll`) from `../olib/build` next to the exe; without it voice turns off and the HUD says why.
+  `voicetest` replaces the mic with a 440 Hz tone that is always sent, to check the path without speaking.
+  M / O cycle the microphone and output device (virtual Steam/remote-desktop devices are often the default;
+  the pause screen shows both with a live mic meter, O plays a beep), L monitors your own mic locally, and the
+  HUD warns when the mic stays at exactly zero while you hold V.
+  `mic <name part>` / `out <name part>` pick devices at launch (e.g. `mic USB out Allure`), `openmic` sends
+  without holding V.
+- F1 (or `diag` at launch) opens a voice diagnostics panel (`voice_diag.odin`): the real mic/output devices in use
+  ("system default" resolved to a name), mic level and frames captured/sent per second, output queue, and per
+  talker packets/s, last packet age, decoded level, buffer and underruns, plus a verdict per stage (silent mic,
+  silent incoming voice, playing to a given output). T plays a test beep. The same data goes every 2 s to
+  `net_fps_voice.log` next to the exe, so a release build can be diagnosed from the file.
+- `publish.bat net_fps` makes a release build without a console window in `build/publish/net_fps/win-x64`
+  (`net_fps.exe`, `SDL3.dll`, `opus.dll`/`rnnoise.dll` when present in `../olib/build`, a player `README.txt` from
+  `src/net_fps/PLAY.txt`) and zips it to
+  `build/publish/net_fps-win-x64.zip`. Shaders are embedded; the font is Windows' Segoe UI.
 - `bots <n>` adds server-side bots that patrol, strafe and shoot when they can see you. `lag <ms>` delays this
   process's outgoing packets; the HUD then shows the prediction lead and correction count.
 - `shot` captures the menu, or with a mode waits until an enemy is in view (the screenshot autopilot aims and
