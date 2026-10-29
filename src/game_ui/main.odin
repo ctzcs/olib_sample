@@ -9,7 +9,7 @@ import r2d "olib:kit/rendering/2d"
 import mat "olib:kit/rendering/material"
 import ui "olib:kit/ui"
 import foster "olib:foster"
-import clay "olib:thirdparty/clay-odin"
+import clay "olib:thirdparty/clay"
 
 // 遗迹探索 HUD；旧控件验收页保留在 src/ui_gallery。
 VIEW_W :: 1280

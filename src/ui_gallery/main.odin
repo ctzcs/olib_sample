@@ -8,7 +8,7 @@ import r2d "olib:kit/rendering/2d"
 import mat "olib:kit/rendering/material"
 import ui "olib:kit/ui"
 import foster "olib:foster"
-import clay "olib:thirdparty/clay-odin"
+import clay "olib:thirdparty/clay"
 
 // 设置 + 滚动背包 + 模态确认；controls 参数换成文本框/下拉框/拖放/虚拟列表页。
 // 可运行，也可用 shot 参数自动输出验收图。

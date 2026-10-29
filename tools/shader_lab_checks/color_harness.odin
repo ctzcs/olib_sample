@@ -4,7 +4,7 @@ package shader_lab_checks
 // ImGui ColorPicker4 的色相与透明度条是竖条：色相自上而下 0→1，透明度自上而下 1→0。
 import foster "olib:foster"
 import lab "olib:kit/tools/shader_lab"
-import imgui "olib:thirdparty/odin-imgui"
+import imgui "olib:thirdparty/imgui"
 
 color_test_value :: proc(s: ^State, group: int) -> [4]f32 {
 	p := &s.parameters[group]

@@ -13,7 +13,7 @@ import "core:fmt"
 import ui "olib:kit/ui"
 import foster "olib:foster"
 import r2d "olib:kit/rendering/2d"
-import clay "olib:thirdparty/clay-odin"
+import clay "olib:thirdparty/clay"
 
 PAPER_COLOR :: foster.Color{240, 231, 202, 255}
 

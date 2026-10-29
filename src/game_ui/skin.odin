@@ -2,7 +2,7 @@ package main
 
 import ui "olib:kit/ui"
 import foster "olib:foster"
-import clay "olib:thirdparty/clay-odin"
+import clay "olib:thirdparty/clay"
 
 // PNG 编译时嵌入，运行目录不影响资源加载。仅转换上传所需的预乘 alpha。
 make_button_skin :: proc(device: ^foster.GraphicsDevice) {

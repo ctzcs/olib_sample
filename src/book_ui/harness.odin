@@ -20,7 +20,7 @@ import kit_app "olib:kit/app"
 import foster "olib:foster"
 import ui "olib:kit/ui"
 import kw "olib:kit/world"
-import clay "olib:thirdparty/clay-odin"
+import clay "olib:thirdparty/clay"
 
 // ==============================================================================
 // 类型

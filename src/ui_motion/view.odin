@@ -6,7 +6,7 @@ import "core:math/linalg"
 import tween "olib:core/tween"
 import foster "olib:foster"
 import ui "olib:kit/ui"
-import clay "olib:thirdparty/clay-odin"
+import clay "olib:thirdparty/clay"
 
 // 分区：配色与声明 / 行动槽与手牌托盘 / 卡牌 / 模态窗口 / 原创像素图标
 

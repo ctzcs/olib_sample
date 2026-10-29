@@ -9,7 +9,7 @@ import "core:strings"
 import foster "olib:foster"
 import dev "olib:kit/rendering/shader/dev"
 import lab "olib:kit/tools/shader_lab"
-import imgui "olib:thirdparty/odin-imgui"
+import imgui "olib:thirdparty/imgui"
 import SDL "vendor:sdl3"
 
 @(private="file")
